@@ -2,6 +2,7 @@ import {
   applyPrayerCompletion,
   defaultAppState,
   emptyCounts,
+  groupLogEntriesByDay,
   incrementCount,
   latestLogEntries,
   remainingCounts,
@@ -68,5 +69,22 @@ describe('qadaa helpers', () => {
     expect(rolledBack.completed.isha).toBe(0);
     expect(rolledBack.todayCompleted.isha).toBe(0);
     expect(rolledBack.log).toHaveLength(0);
+  });
+
+  it('groups history entries by day', () => {
+    const base = defaultAppState();
+    const withLogs = {
+      ...base,
+      log: [
+        { id: '1', prayer: 'fajr' as const, createdAt: '2026-04-06T07:00:00.000Z', source: 'quick_add' as const },
+        { id: '2', prayer: 'asr' as const, createdAt: '2026-04-06T12:00:00.000Z', source: 'quick_add' as const },
+        { id: '3', prayer: 'isha' as const, createdAt: '2026-04-05T19:30:00.000Z', source: 'quick_add' as const },
+      ],
+    };
+
+    const grouped = groupLogEntriesByDay(withLogs.log);
+    expect(grouped).toHaveLength(2);
+    expect(grouped[0].entries).toHaveLength(2);
+    expect(grouped[1].entries).toHaveLength(1);
   });
 });

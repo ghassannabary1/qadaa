@@ -15,8 +15,8 @@ import {
   AppState,
   applyPrayerCompletion,
   defaultAppState,
+  groupLogEntriesByDay,
   hydrateState,
-  latestLogEntries,
   PrayerKey,
   PRAYER_KEYS,
   PRAYER_LABELS,
@@ -65,7 +65,7 @@ export default function App() {
     return { target, completed, remaining, today };
   }, [state]);
 
-  const recentEntries = useMemo(() => latestLogEntries(state.log, 5), [state.log]);
+  const historyGroups = useMemo(() => groupLogEntriesByDay(state.log), [state.log]);
 
   const incrementCompleted = (prayer: PrayerKey) => {
     setState((current) => applyPrayerCompletion(current, prayer));
@@ -105,9 +105,9 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerCard}>
           <Text style={styles.eyebrow}>Qadaa</Text>
-          <Text style={styles.title}>Core logic is getting stronger.</Text>
+          <Text style={styles.title}>History is now part of the product.</Text>
           <Text style={styles.subtitle}>
-            Prayer completions are now stored as recent activity, not just counters.
+            You can now see qadaa activity grouped by day, not just raw recent items.
           </Text>
         </View>
 
@@ -152,29 +152,41 @@ export default function App() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent activity</Text>
+          <Text style={styles.sectionTitle}>History</Text>
           <Text style={styles.sectionHint}>
-            This is the first step toward a proper history and trust layer.
+            Logged qadaa prayers are grouped by day so you can review progress more confidently.
           </Text>
 
-          {recentEntries.length === 0 ? (
+          {historyGroups.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>No logged qadaa activity yet.</Text>
+              <Text style={styles.emptyStateText}>No qadaa history yet.</Text>
             </View>
           ) : (
-            recentEntries.map((entry) => {
-              const prayerInfo = PRAYER_LABELS[entry.prayer];
-              const time = new Date(entry.createdAt).toLocaleString();
-              return (
-                <View key={entry.id} style={styles.activityRow}>
-                  <View>
-                    <Text style={styles.activityTitle}>{prayerInfo.label}</Text>
-                    <Text style={styles.activityArabic}>{prayerInfo.arabic}</Text>
-                  </View>
-                  <Text style={styles.activityTime}>{time}</Text>
-                </View>
-              );
-            })
+            historyGroups.map((group) => (
+              <View key={group.dayKey} style={styles.historyGroup}>
+                <Text style={styles.historyGroupTitle}>{group.dayLabel}</Text>
+                {group.entries.map((entry) => {
+                  const prayerInfo = PRAYER_LABELS[entry.prayer];
+                  const time = new Date(entry.createdAt).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  });
+
+                  return (
+                    <View key={entry.id} style={styles.activityRow}>
+                      <View>
+                        <Text style={styles.activityTitle}>{prayerInfo.label}</Text>
+                        <Text style={styles.activityArabic}>{prayerInfo.arabic}</Text>
+                      </View>
+                      <View style={styles.activityMetaBlock}>
+                        <Text style={styles.activityTime}>{time}</Text>
+                        <Text style={styles.activitySource}>quick add</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ))
           )}
         </View>
 
@@ -216,7 +228,7 @@ export default function App() {
             placeholderTextColor="#94A3B8"
           />
           <Text style={styles.footnote}>
-            Next step: turn this event log into a proper history screen and safer recovery flow.
+            Next step: safer undo, better review controls, and a more polished phone-first history experience.
           </Text>
         </View>
       </ScrollView>
@@ -391,6 +403,14 @@ const styles = StyleSheet.create({
     color: '#CBD5E1',
     fontSize: 14,
   },
+  historyGroup: {
+    gap: 8,
+  },
+  historyGroupTitle: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   activityRow: {
     backgroundColor: '#1E293B',
     borderRadius: 16,
@@ -411,11 +431,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
+  activityMetaBlock: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
   activityTime: {
     color: '#CBD5E1',
     fontSize: 12,
     textAlign: 'right',
-    maxWidth: 140,
+  },
+  activitySource: {
+    color: '#94A3B8',
+    fontSize: 11,
+    textTransform: 'uppercase',
   },
   inputRow: {
     flexDirection: 'row',

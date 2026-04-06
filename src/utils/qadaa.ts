@@ -8,6 +8,12 @@ export type PrayerLogEntry = {
   source: 'quick_add' | 'manual_adjust';
 };
 
+export type HistoryDayGroup = {
+  dayKey: string;
+  dayLabel: string;
+  entries: PrayerLogEntry[];
+};
+
 export type AppState = {
   target: PrayerCounts;
   completed: PrayerCounts;
@@ -83,7 +89,7 @@ export const applyPrayerCompletion = (state: AppState, prayer: PrayerKey): AppSt
   ...state,
   completed: incrementCount(state.completed, prayer),
   todayCompleted: incrementCount(state.todayCompleted, prayer),
-  log: [createLogEntry(prayer), ...state.log].slice(0, 50),
+  log: [createLogEntry(prayer), ...state.log].slice(0, 100),
 });
 
 export const rollbackPrayerCompletion = (state: AppState, prayer: PrayerKey): AppState => {
@@ -100,3 +106,25 @@ export const rollbackPrayerCompletion = (state: AppState, prayer: PrayerKey): Ap
 };
 
 export const latestLogEntries = (log: PrayerLogEntry[], limit = 5) => log.slice(0, limit);
+
+export const groupLogEntriesByDay = (log: PrayerLogEntry[]): HistoryDayGroup[] => {
+  const map = new Map<string, PrayerLogEntry[]>();
+
+  for (const entry of log) {
+    const date = new Date(entry.createdAt);
+    const dayKey = date.toISOString().slice(0, 10);
+    const existing = map.get(dayKey) ?? [];
+    existing.push(entry);
+    map.set(dayKey, existing);
+  }
+
+  return Array.from(map.entries()).map(([dayKey, entries]) => ({
+    dayKey,
+    dayLabel: new Date(entries[0].createdAt).toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }),
+    entries,
+  }));
+};
