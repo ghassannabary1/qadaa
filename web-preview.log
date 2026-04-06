@@ -1,0 +1,24 @@
+
+> qadaa@1.0.0 start
+> expo start --web --port 19007
+
+Starting project at /Users/ghassannabary/.openclaw/workspace/projects/qadaa
+Starting Metro Bundler
+The following packages should be updated for best compatibility with the installed expo version:
+  @react-native-async-storage/async-storage@3.0.2 - expected version: 2.2.0
+  expo-router@55.0.10 - expected version: ~6.0.23
+  react-native-safe-area-context@5.7.0 - expected version: ~5.6.0
+  react-native-screens@4.24.0 - expected version: ~4.16.0
+  @types/jest@30.0.0 - expected version: 29.5.14
+  jest@30.3.0 - expected version: ~29.7.0
+  jest-expo@55.0.13 - expected version: ~54.0.17
+Your project may not work correctly until you install the expected versions of the packages.
+Waiting on http://localhost:19007
+Logs for your project will appear below.
+Web Bundled 1672ms index.ts (225 modules)
+Web Bundled 1677ms index.ts (1 module)
+ LOG  [web] Logs will appear in the browser console
+ LOG  [web] Logs will appear in the browser console
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 17ms index.ts (1 module)
+ LOG  [web] Logs will appear in the browser console
