@@ -12,43 +12,23 @@ import {
 } from 'react-native';
 
 import {
-  decrementCount,
-  emptyCounts,
-  incrementCount,
-  PrayerCounts,
+  AppState,
+  applyPrayerCompletion,
+  defaultAppState,
+  hydrateState,
+  latestLogEntries,
   PrayerKey,
+  PRAYER_KEYS,
+  PRAYER_LABELS,
   remainingCounts,
+  rollbackPrayerCompletion,
   totalCounts,
 } from './src/utils/qadaa';
 
-type AppState = {
-  target: PrayerCounts;
-  completed: PrayerCounts;
-  todayCompleted: PrayerCounts;
-  includeWitr: boolean;
-  notes: string;
-};
-
-const STORAGE_KEY = 'qadaa-simple-v1';
-
-const PRAYERS: { key: PrayerKey; label: string; arabic: string }[] = [
-  { key: 'fajr', label: 'Fajr', arabic: 'الفجر' },
-  { key: 'dhuhr', label: 'Dhuhr', arabic: 'الظهر' },
-  { key: 'asr', label: 'Asr', arabic: 'العصر' },
-  { key: 'maghrib', label: 'Maghrib', arabic: 'المغرب' },
-  { key: 'isha', label: 'Isha', arabic: 'العشاء' },
-];
-
-const defaultState: AppState = {
-  target: emptyCounts(),
-  completed: emptyCounts(),
-  todayCompleted: emptyCounts(),
-  includeWitr: false,
-  notes: 'Shafi‘i profile — simple counting first, detailed fiqh options later.',
-};
+const STORAGE_KEY = 'qadaa-simple-v2';
 
 export default function App() {
-  const [state, setState] = useState<AppState>(defaultState);
+  const [state, setState] = useState<AppState>(defaultAppState());
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -56,14 +36,7 @@ export default function App() {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
-          const parsed = JSON.parse(raw) as Partial<AppState>;
-          setState({
-            ...defaultState,
-            ...parsed,
-            target: { ...emptyCounts(), ...(parsed.target ?? {}) },
-            completed: { ...emptyCounts(), ...(parsed.completed ?? {}) },
-            todayCompleted: { ...emptyCounts(), ...(parsed.todayCompleted ?? {}) },
-          });
+          setState(hydrateState(JSON.parse(raw) as Partial<AppState>));
         }
       } catch (error) {
         console.warn('Failed to load app state', error);
@@ -92,20 +65,14 @@ export default function App() {
     return { target, completed, remaining, today };
   }, [state]);
 
+  const recentEntries = useMemo(() => latestLogEntries(state.log, 5), [state.log]);
+
   const incrementCompleted = (prayer: PrayerKey) => {
-    setState((current) => ({
-      ...current,
-      completed: incrementCount(current.completed, prayer),
-      todayCompleted: incrementCount(current.todayCompleted, prayer),
-    }));
+    setState((current) => applyPrayerCompletion(current, prayer));
   };
 
   const decrementCompleted = (prayer: PrayerKey) => {
-    setState((current) => ({
-      ...current,
-      completed: decrementCount(current.completed, prayer),
-      todayCompleted: decrementCount(current.todayCompleted, prayer),
-    }));
+    setState((current) => rollbackPrayerCompletion(current, prayer));
   };
 
   const updateTarget = (prayer: PrayerKey, value: string) => {
@@ -122,7 +89,13 @@ export default function App() {
   const resetToday = () => {
     setState((current) => ({
       ...current,
-      todayCompleted: emptyCounts(),
+      todayCompleted: {
+        fajr: 0,
+        dhuhr: 0,
+        asr: 0,
+        maghrib: 0,
+        isha: 0,
+      },
     }));
   };
 
@@ -132,9 +105,9 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerCard}>
           <Text style={styles.eyebrow}>Qadaa</Text>
-          <Text style={styles.title}>Make up missed prayers simply.</Text>
+          <Text style={styles.title}>Core logic is getting stronger.</Text>
           <Text style={styles.subtitle}>
-            Built for quick daily use with a Shafi‘i-friendly setup.
+            Prayer completions are now stored as recent activity, not just counters.
           </Text>
         </View>
 
@@ -152,23 +125,24 @@ export default function App() {
             </Pressable>
           </View>
 
-          {PRAYERS.map((prayer) => {
-            const remaining = Math.max(state.target[prayer.key] - state.completed[prayer.key], 0);
+          {PRAYER_KEYS.map((prayer) => {
+            const prayerInfo = PRAYER_LABELS[prayer];
+            const remaining = Math.max(state.target[prayer] - state.completed[prayer], 0);
             return (
-              <View key={prayer.key} style={styles.prayerCard}>
+              <View key={prayer} style={styles.prayerCard}>
                 <View style={styles.prayerInfo}>
-                  <Text style={styles.prayerLabel}>{prayer.label}</Text>
-                  <Text style={styles.prayerArabic}>{prayer.arabic}</Text>
+                  <Text style={styles.prayerLabel}>{prayerInfo.label}</Text>
+                  <Text style={styles.prayerArabic}>{prayerInfo.arabic}</Text>
                   <Text style={styles.prayerMeta}>
-                    Done {state.completed[prayer.key]} / {state.target[prayer.key]} · Remaining {remaining}
+                    Done {state.completed[prayer]} / {state.target[prayer]} · Remaining {remaining}
                   </Text>
                 </View>
 
                 <View style={styles.actionsColumn}>
-                  <Pressable style={styles.addButton} onPress={() => incrementCompleted(prayer.key)}>
+                  <Pressable style={styles.addButton} onPress={() => incrementCompleted(prayer)}>
                     <Text style={styles.addButtonText}>+1</Text>
                   </Pressable>
-                  <Pressable style={styles.minusButton} onPress={() => decrementCompleted(prayer.key)}>
+                  <Pressable style={styles.minusButton} onPress={() => decrementCompleted(prayer)}>
                     <Text style={styles.minusButtonText}>Undo</Text>
                   </Pressable>
                 </View>
@@ -178,27 +152,57 @@ export default function App() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recent activity</Text>
+          <Text style={styles.sectionHint}>
+            This is the first step toward a proper history and trust layer.
+          </Text>
+
+          {recentEntries.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No logged qadaa activity yet.</Text>
+            </View>
+          ) : (
+            recentEntries.map((entry) => {
+              const prayerInfo = PRAYER_LABELS[entry.prayer];
+              const time = new Date(entry.createdAt).toLocaleString();
+              return (
+                <View key={entry.id} style={styles.activityRow}>
+                  <View>
+                    <Text style={styles.activityTitle}>{prayerInfo.label}</Text>
+                    <Text style={styles.activityArabic}>{prayerInfo.arabic}</Text>
+                  </View>
+                  <Text style={styles.activityTime}>{time}</Text>
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Backlog setup</Text>
           <Text style={styles.sectionHint}>
             Enter your estimated qadaa count for each prayer. You can refine this later.
           </Text>
 
-          {PRAYERS.map((prayer) => (
-            <View key={prayer.key} style={styles.inputRow}>
-              <View>
-                <Text style={styles.inputLabel}>{prayer.label}</Text>
-                <Text style={styles.inputArabic}>{prayer.arabic}</Text>
+          {PRAYER_KEYS.map((prayer) => {
+            const prayerInfo = PRAYER_LABELS[prayer];
+            return (
+              <View key={prayer} style={styles.inputRow}>
+                <View>
+                  <Text style={styles.inputLabel}>{prayerInfo.label}</Text>
+                  <Text style={styles.inputArabic}>{prayerInfo.arabic}</Text>
+                </View>
+                <TextInput
+                  keyboardType="number-pad"
+                  value={String(state.target[prayer])}
+                  onChangeText={(value) => updateTarget(prayer, value)}
+                  style={styles.input}
+                  placeholder="0"
+                  placeholderTextColor="#94A3B8"
+                />
               </View>
-              <TextInput
-                keyboardType="number-pad"
-                value={String(state.target[prayer.key])}
-                onChangeText={(value) => updateTarget(prayer.key, value)}
-                style={styles.input}
-                placeholder="0"
-                placeholderTextColor="#94A3B8"
-              />
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         <View style={styles.section}>
@@ -212,7 +216,7 @@ export default function App() {
             placeholderTextColor="#94A3B8"
           />
           <Text style={styles.footnote}>
-            Later we can add: Witr support, smarter estimation, streaks, and calendar-based catch-up plans.
+            Next step: turn this event log into a proper history screen and safer recovery flow.
           </Text>
         </View>
       </ScrollView>
@@ -377,6 +381,41 @@ const styles = StyleSheet.create({
     color: '#CBD5E1',
     fontSize: 13,
     fontWeight: '700',
+  },
+  emptyState: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+  },
+  emptyStateText: {
+    color: '#CBD5E1',
+    fontSize: 14,
+  },
+  activityRow: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  activityTitle: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  activityArabic: {
+    color: '#93C5FD',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  activityTime: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    textAlign: 'right',
+    maxWidth: 140,
   },
   inputRow: {
     flexDirection: 'row',

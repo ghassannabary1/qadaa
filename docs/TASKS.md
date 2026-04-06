@@ -3,12 +3,15 @@
 ## Inbox
 - [ ] Design onboarding flow for first-time users
 - [ ] Improve home screen hierarchy and spacing
-- [ ] Add history/log screen for completed qadaa
+- [ ] Build history/log screen from prayer event data
 - [ ] Add backup/export strategy
 - [ ] Define Witr handling approach
+- [ ] Add safer undo/recovery flows
 
 ## In Progress
-- [ ] None
+- [ ] Refactor app state around a prayer completion log
+- [ ] Separate domain logic from UI more cleanly
+- [ ] Expose recent prayer activity in the main screen
 
 ## Done
 - [x] Scaffold Expo + TypeScript app

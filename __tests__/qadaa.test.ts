@@ -1,8 +1,11 @@
 import {
-  decrementCount,
+  applyPrayerCompletion,
+  defaultAppState,
   emptyCounts,
   incrementCount,
+  latestLogEntries,
   remainingCounts,
+  rollbackPrayerCompletion,
   totalCounts,
 } from '../src/utils/qadaa';
 
@@ -15,6 +18,12 @@ describe('qadaa helpers', () => {
       maghrib: 0,
       isha: 0,
     });
+  });
+
+  it('builds a default app state', () => {
+    const state = defaultAppState();
+    expect(state.log).toEqual([]);
+    expect(state.notes).toContain('Shafi');
   });
 
   it('totals all prayers', () => {
@@ -45,7 +54,19 @@ describe('qadaa helpers', () => {
     expect(incrementCount(emptyCounts(), 'fajr').fajr).toBe(1);
   });
 
-  it('does not decrement below zero', () => {
-    expect(decrementCount(emptyCounts(), 'isha').isha).toBe(0);
+  it('logs a completion and keeps recent history', () => {
+    const state = applyPrayerCompletion(defaultAppState(), 'asr');
+    expect(state.completed.asr).toBe(1);
+    expect(state.log).toHaveLength(1);
+    expect(state.log[0].prayer).toBe('asr');
+    expect(latestLogEntries(state.log, 1)).toHaveLength(1);
+  });
+
+  it('rolls back a prayer completion safely', () => {
+    const afterAdd = applyPrayerCompletion(defaultAppState(), 'isha');
+    const rolledBack = rollbackPrayerCompletion(afterAdd, 'isha');
+    expect(rolledBack.completed.isha).toBe(0);
+    expect(rolledBack.todayCompleted.isha).toBe(0);
+    expect(rolledBack.log).toHaveLength(0);
   });
 });
