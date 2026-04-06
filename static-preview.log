@@ -1,6 +1,0 @@
-::ffff:127.0.0.1 - - [06/Apr/2026 12:56:23] "GET / HTTP/1.1" 200 -
-::ffff:127.0.0.1 - - [06/Apr/2026 12:56:23] "GET /_expo/static/js/web/index-4cad476215aa992fbf4fb2db3663cddd.js HTTP/1.1" 200 -
-::ffff:127.0.0.1 - - [06/Apr/2026 12:56:23] "GET /favicon.ico HTTP/1.1" 200 -
-::ffff:127.0.0.1 - - [06/Apr/2026 13:03:47] "GET / HTTP/1.1" 304 -
-::ffff:127.0.0.1 - - [06/Apr/2026 13:03:47] "GET /_expo/static/js/web/index-4cad476215aa992fbf4fb2db3663cddd.js HTTP/1.1" 304 -
-::ffff:127.0.0.1 - - [06/Apr/2026 13:03:47] "GET /favicon.ico HTTP/1.1" 304 -
