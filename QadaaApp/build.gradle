@@ -1,0 +1,25 @@
+// Top-level build file where you add
+// additional configuration to your Gradle + NPM build.
+
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath("com.android.tools.build:gradle:8.2.2")
+    classpath("com.facebook.react:react-native-gradle-plugin")
+  }
+}
+
+allprojects {
+  repositories {
+    maven {
+      // All of your root-dir-located libraries and dependencies
+      url("../node_modules/")
+    }
+    google()
+    mavenCentral()
+  }
+}

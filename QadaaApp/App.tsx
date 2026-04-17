@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { Session } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   ImageBackground,
   Linking,
@@ -13,6 +16,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 
@@ -39,6 +43,14 @@ import {
   rollbackPrayerCompletion,
   totalCounts,
 } from './src/utils/qadaa';
+import {
+  getUserProfile,
+  isAuthConfigured,
+  loadSession,
+  signInWithProvider,
+  signOutUser,
+  supabase,
+} from './src/utils/auth';
 import { createBackup, exportBackup, getBackupAge } from './src/utils/backup';
 import { DividerOrnament } from './src/ui/patterns/DividerOrnament';
 
@@ -84,6 +96,8 @@ type OnboardingSetup = {
   target: PrayerCounts;
 };
 
+type AccountProfile = ReturnType<typeof getUserProfile>;
+
 type CopyBlock = {
   dir: 'ltr' | 'rtl';
   appEyebrow: string;
@@ -114,6 +128,9 @@ type CopyBlock = {
   overallProgress: string;
   progressTitle: string;
   progressHint: string;
+  consistencyTitle: string;
+  consistencySummary: string;
+  last7Days: string;
   quickAddTitle: string;
   prayerRowsTitle: string;
   showPrayerRows: string;
@@ -142,6 +159,18 @@ type CopyBlock = {
   qnaTitle: string;
   qnaHint: string;
   settingsTitle: string;
+  accountTitle: string;
+  accountHint: string;
+  connectGoogle: string;
+  connectFacebook: string;
+  connectedAs: string;
+  signOut: string;
+  authComingSoon: string;
+  authNeedsSetup: string;
+  sharingReadyHint: string;
+  authConfiguredLabel: string;
+  authReady: string;
+  authNotReady: string;
   languageTitle: string;
   languageHint: string;
   accountabilityTitle: string;
@@ -204,6 +233,9 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     overallProgress: 'Overall progress',
     progressTitle: 'Progress',
     progressHint: 'See what is left and when you finish if you count one qadaa day each day.',
+    consistencyTitle: 'Consistency',
+    consistencySummary: 'Counted on {count} of the last 7 days',
+    last7Days: 'Last 7 days',
     quickAddTitle: 'Quick add',
     prayerRowsTitle: 'Prayer details',
     showPrayerRows: 'Show prayer details',
@@ -232,6 +264,18 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     qnaTitle: 'Related Q&A',
     qnaHint: 'Trusted Shafi\'i study links. We can expand this later with named scholars and categories.',
     settingsTitle: 'Settings',
+    accountTitle: 'Account',
+    accountHint: 'Sign in now so future sharing can be tied to a real user account.',
+    connectGoogle: 'Continue with Google',
+    connectFacebook: 'Continue with Facebook',
+    connectedAs: 'Connected as',
+    signOut: 'Sign out',
+    authComingSoon: 'This account will be the base for sharing progress with trusted people later.',
+    authNeedsSetup: 'Add Supabase project keys to enable Google and Facebook sign-in.',
+    sharingReadyHint: 'Google and Facebook give us the user identity we need before adding progress sharing.',
+    authConfiguredLabel: 'Auth configured',
+    authReady: 'Ready',
+    authNotReady: 'Needs setup',
     languageTitle: 'Language',
     languageHint: 'Choose one full app language for the whole interface.',
     accountabilityTitle: 'Accountability partner',
@@ -293,6 +337,9 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     overallProgress: 'التقدّم العام',
     progressTitle: 'التقدّم',
     progressHint: 'شاهد المتبقي وتاريخ الانتهاء إذا احتسبت يوم قضاء واحداً كل يوم.',
+    consistencyTitle: 'الانتظام',
+    consistencySummary: 'تم الاحتساب في {count} من آخر 7 أيام',
+    last7Days: 'آخر 7 أيام',
     quickAddTitle: 'إضافة سريعة',
     prayerRowsTitle: 'تفاصيل الصلوات',
     showPrayerRows: 'إظهار تفاصيل الصلوات',
@@ -321,6 +368,18 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     qnaTitle: 'أسئلة وأجوبة',
     qnaHint: 'روابط موثوقة في الفقه الشافعي. يمكن توسيعها لاحقاً بأسماء العلماء والتصنيفات.',
     settingsTitle: 'الإعدادات',
+    accountTitle: 'الحساب',
+    accountHint: 'سجّل الدخول الآن حتى نربط المشاركة لاحقاً بحساب مستخدم حقيقي.',
+    connectGoogle: 'المتابعة عبر Google',
+    connectFacebook: 'المتابعة عبر Facebook',
+    connectedAs: 'متصل باسم',
+    signOut: 'تسجيل الخروج',
+    authComingSoon: 'سيكون هذا الحساب أساس مشاركة التقدم مع أشخاص موثوقين لاحقاً.',
+    authNeedsSetup: 'أضف مفاتيح مشروع Supabase لتفعيل تسجيل الدخول عبر Google وFacebook.',
+    sharingReadyHint: 'يمنحنا Google وFacebook هوية المستخدم اللازمة قبل إضافة مشاركة التقدم.',
+    authConfiguredLabel: 'إعداد المصادقة',
+    authReady: 'جاهز',
+    authNotReady: 'يحتاج إعداداً',
     languageTitle: 'اللغة',
     languageHint: 'اختر لغة واحدة كاملة لواجهة التطبيق كلها.',
     accountabilityTitle: 'شريك المحاسبة',
@@ -408,6 +467,10 @@ export default function App() {
   const [state, setState] = useState<AppState>(defaultAppState());
   const [loaded, setLoaded] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [authSession, setAuthSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(isAuthConfigured);
+  const [authBusyProvider, setAuthBusyProvider] = useState<'google' | 'facebook' | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadState = async () => {
@@ -454,6 +517,43 @@ export default function App() {
       console.warn('Failed to save app state', error);
     });
   }, [loaded, state]);
+
+  useEffect(() => {
+    if (!isAuthConfigured || !supabase) {
+      setAuthLoading(false);
+      return;
+    }
+
+    let mounted = true;
+
+    loadSession()
+      .then((session) => {
+        if (mounted) {
+          setAuthSession(session);
+          setAuthLoading(false);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load auth session', error);
+        if (mounted) {
+          setAuthLoading(false);
+          setAuthError(error instanceof Error ? error.message : 'Failed to load account');
+        }
+      });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) {
+        setAuthSession(session);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const totals = useMemo<Totals>(() => {
     const target = totalCounts(state.target);
@@ -559,6 +659,44 @@ export default function App() {
     await Share.share({ message, title: copy.accountabilityTitle });
   }, [state.language, state.accountabilityPartnerName, totals, ]);
 
+  const handleProviderSignIn = useCallback(
+    async (provider: 'google' | 'facebook') => {
+      if (authBusyProvider) return;
+      if (Constants.appOwnership === 'expo') {
+        Alert.alert(
+          provider === 'google' ? 'Google sign-in' : 'Facebook sign-in',
+          'Social sign-in needs a development build. Please run the app with `npx expo run:android` or `npx expo run:ios`, then try again.'
+        );
+        return;
+      }
+      try {
+        setAuthError(null);
+        setAuthBusyProvider(provider);
+        await signInWithProvider(provider);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Sign-in failed.';
+        setAuthError(message);
+        Alert.alert(provider === 'google' ? 'Google' : 'Facebook', message);
+      } finally {
+        setAuthBusyProvider(null);
+      }
+    },
+    [authBusyProvider]
+  );
+
+  const handleSignOut = useCallback(async () => {
+    try {
+      setAuthError(null);
+      await signOutUser();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Sign-out failed.';
+      setAuthError(message);
+      Alert.alert('Sign out', message);
+    }
+  }, []);
+
+  const accountProfile = useMemo<AccountProfile>(() => getUserProfile(authSession?.user ?? null), [authSession]);
+
   return (
     <ImageBackground source={APP_BACKGROUND} style={styles.backgroundImage} imageStyle={styles.backgroundImageAsset}>
       <View style={styles.backgroundTint}>
@@ -584,6 +722,14 @@ export default function App() {
             handleExport={handleExport}
             handleImport={handleImport}
             handleShareProgress={handleShareProgress}
+            authConfigured={isAuthConfigured}
+            accountProfile={accountProfile}
+            authLoading={authLoading}
+            authBusyProvider={authBusyProvider}
+            authError={authError}
+            onGoogleSignIn={() => handleProviderSignIn('google')}
+            onFacebookSignIn={() => handleProviderSignIn('facebook')}
+            onSignOut={handleSignOut}
           />
         )}
       </View>
@@ -856,6 +1002,15 @@ function MainApp({
   const [showPrayerRows, setShowPrayerRows] = useState(false);
   const copy = COPY[state.language];
   const hadith = DAILY_HADITH[state.language];
+  const recentConsistency = useMemo(() => {
+    const lastSevenDays = dailyHistory.slice(-7);
+    const activeDays = lastSevenDays.filter((day) => day.totalCount > 0).length;
+
+    return {
+      days: lastSevenDays,
+      activeDays,
+    };
+  }, [dailyHistory]);
   const progress = useMemo(() => {
     const percent = totals.target > 0 ? Math.min(totals.completed / totals.target, 1) : 0;
     const estimatedDaysLeft = estimateCompletionDays(totals.remaining, state.log);
@@ -878,21 +1033,10 @@ function MainApp({
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
           <View style={styles.headerCard}>
             <View style={styles.headerTopRow}>
-              <Text style={styles.eyebrow}>{copy.appEyebrow}</Text>
+              <Text style={styles.eyebrow}>{copy.dailyHadithTitle}</Text>
             </View>
-            <Text style={[styles.title, isArabic(state.language) && styles.alignRight]}>
-              {copy.appTitle}
-            </Text>
-            <Text style={[styles.subtitle, isArabic(state.language) && styles.alignRight]}>
-              {copy.appSummary}
-            </Text>
             <DividerOrnament color={COLORS.gold} />
             <Pressable onPress={() => Linking.openURL(hadith.url)} style={styles.hadithCard}>
-              <View style={styles.hadithBadge}>
-                <Text style={[styles.hadithLabel, isArabic(state.language) && styles.alignRight]}>
-                  {copy.dailyHadithTitle}
-                </Text>
-              </View>
               <Text style={[styles.hadithText, isArabic(state.language) && styles.alignRight]}>
                 {hadith.text}
               </Text>
@@ -909,6 +1053,7 @@ function MainApp({
                 totals={totals}
                 progress={progress}
                 language={state.language}
+                consistency={recentConsistency}
               />
 
               <View style={styles.section}>
@@ -1245,6 +1390,14 @@ function MoreTab({
   copy,
   language,
   onLanguageChange,
+  authConfigured,
+  accountProfile,
+  authLoading,
+  authBusyProvider,
+  authError,
+  onGoogleSignIn,
+  onFacebookSignIn,
+  onSignOut,
   accountabilityPartnerName,
   onAccountabilityPartnerNameChange,
   notes,
@@ -1256,6 +1409,14 @@ function MoreTab({
   copy: CopyBlock;
   language: AppLanguage;
   onLanguageChange: (language: AppLanguage) => void;
+  authConfigured: boolean;
+  accountProfile: AccountProfile;
+  authLoading: boolean;
+  authBusyProvider: 'google' | 'facebook' | null;
+  authError: string | null;
+  onGoogleSignIn: () => void;
+  onFacebookSignIn: () => void;
+  onSignOut: () => void;
   accountabilityPartnerName: string;
   onAccountabilityPartnerNameChange: (name: string) => void;
   notes: string;
@@ -1266,6 +1427,94 @@ function MoreTab({
 }) {
   return (
     <>
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
+          {copy.accountTitle}
+        </Text>
+        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+          {authConfigured ? copy.accountHint : copy.authNeedsSetup}
+        </Text>
+
+        <View style={styles.accountCard}>
+          <View style={styles.accountStatusHeader}>
+            <View
+              style={[
+                styles.accountStatusDot,
+                authConfigured ? styles.accountStatusDotReady : styles.accountStatusDotNotReady,
+              ]}
+            />
+            <Text style={[styles.accountStatusLine, isArabic(language) && styles.alignRight]}>
+              {copy.authConfiguredLabel}: {authConfigured ? copy.authReady : copy.authNotReady}
+            </Text>
+          </View>
+          {authLoading ? (
+            <View style={styles.accountLoadingRow}>
+              <ActivityIndicator color={COLORS.lightGold} />
+              <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
+                {copy.accountHint}
+              </Text>
+            </View>
+          ) : accountProfile ? (
+            <>
+              <Text style={[styles.accountName, isArabic(language) && styles.alignRight]}>
+                {accountProfile.name}
+              </Text>
+              <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
+                {copy.connectedAs}: {accountProfile.email || accountProfile.provider}
+              </Text>
+              <Text style={[styles.accountMeta, isArabic(language) && styles.alignRight]}>
+                {copy.authComingSoon}
+              </Text>
+              <Pressable onPress={onSignOut} style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonText}>{copy.signOut}</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
+                {copy.sharingReadyHint}
+              </Text>
+              <View style={styles.authButtons}>
+                <TouchableOpacity
+                  onPress={onGoogleSignIn}
+                  activeOpacity={0.85}
+                  style={styles.oauthButtonPrimary}
+                >
+                  <View style={styles.oauthButtonRow}>
+                    {authBusyProvider === 'google' ? (
+                      <ActivityIndicator color={COLORS.nightBlue} />
+                    ) : (
+                      <Text style={styles.oauthButtonBrandPrimary}>G</Text>
+                    )}
+                    <Text style={styles.oauthButtonPrimaryText}>{copy.connectGoogle}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={onFacebookSignIn}
+                  activeOpacity={0.85}
+                  style={styles.oauthButtonSecondary}
+                >
+                  <View style={styles.oauthButtonRow}>
+                    {authBusyProvider === 'facebook' ? (
+                      <ActivityIndicator color={COLORS.cream} />
+                    ) : (
+                      <Text style={styles.oauthButtonBrandSecondary}>f</Text>
+                    )}
+                    <Text style={styles.oauthButtonSecondaryText}>{copy.connectFacebook}</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {authError ? (
+            <Text style={[styles.accountError, isArabic(language) && styles.alignRight]}>
+              {authError}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
           {copy.settingsTitle}
@@ -1349,6 +1598,7 @@ function ProgressOverview({
   totals,
   progress,
   language,
+  consistency,
 }: {
   copy: CopyBlock;
   totals: Totals;
@@ -1361,7 +1611,13 @@ function ProgressOverview({
     finishDate: Date | null;
   };
   language: AppLanguage;
+  consistency: {
+    days: DailyActivitySummary[];
+    activeDays: number;
+  };
 }) {
+  const consistencyLabel = copy.consistencySummary.replace('{count}', String(consistency.activeDays));
+
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>{copy.progressTitle}</Text>
@@ -1401,9 +1657,45 @@ function ProgressOverview({
             </Text>
           </View>
         </View>
-        <View style={styles.progressStatsRow}>
-          <ProgressStat label={copy.daysLeft} value={formatEstimatedDaysLeft(progress.estimatedDaysLeft, copy.needHistory, copy.dayUnit)} />
-          <ProgressStat label={copy.finish} value={formatFinishDate(progress.finishDate, copy.needHistory)} />
+        <ProgressStat label={copy.finish} value={formatFinishDate(progress.finishDate, copy.needHistory)} />
+        <View style={styles.consistencyCard}>
+          <View style={styles.consistencyHeader}>
+            <Text style={[styles.consistencyTitle, isArabic(language) && styles.alignRight]}>
+              {copy.consistencyTitle}
+            </Text>
+            <Text style={styles.consistencyRange}>{copy.last7Days}</Text>
+          </View>
+          <Text style={[styles.consistencyBody, isArabic(language) && styles.alignRight]}>
+            {consistencyLabel}
+          </Text>
+          <View style={styles.consistencyStrip}>
+            {consistency.days.map((day) => {
+              const date = new Date(`${day.dayKey}T12:00:00`);
+              const label = date.toLocaleDateString(language === 'ar' ? 'ar' : 'en', {
+                weekday: 'narrow',
+              });
+              const isActive = day.totalCount > 0;
+
+              return (
+                <View key={day.dayKey} style={styles.consistencyDay}>
+                  <View
+                    style={[
+                      styles.consistencyPill,
+                      isActive ? styles.consistencyPillActive : styles.consistencyPillIdle,
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.consistencyDayLabel,
+                      isActive && styles.consistencyDayLabelActive,
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
         </View>
       </View>
     </View>
@@ -2218,6 +2510,63 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  consistencyCard: {
+    backgroundColor: 'rgba(247, 243, 234, 0.05)',
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '12',
+  },
+  consistencyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  consistencyTitle: {
+    color: COLORS.cream,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  consistencyRange: {
+    color: COLORS.mutedText,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  consistencyBody: {
+    color: COLORS.mutedText,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  consistencyStrip: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  consistencyDay: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  consistencyPill: {
+    width: '100%',
+    height: 10,
+    borderRadius: 999,
+  },
+  consistencyPillActive: {
+    backgroundColor: COLORS.gold,
+  },
+  consistencyPillIdle: {
+    backgroundColor: COLORS.progressTrack,
+  },
+  consistencyDayLabel: {
+    color: COLORS.mutedText,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  consistencyDayLabelActive: {
+    color: COLORS.cream,
+  },
   dayActionCard: {
     backgroundColor: 'rgba(20, 67, 42, 0.92)',
     borderRadius: 22,
@@ -2571,6 +2920,107 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     flex: 1,
+  },
+  accountCard: {
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '12',
+  },
+  accountLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  accountName: {
+    color: COLORS.cream,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  accountBody: {
+    color: COLORS.mutedText,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  accountMeta: {
+    color: COLORS.lightGold,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  accountStatusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  accountStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+  },
+  accountStatusDotReady: {
+    backgroundColor: '#8FD49A',
+  },
+  accountStatusDotNotReady: {
+    backgroundColor: COLORS.lightGold,
+  },
+  accountStatusLine: {
+    color: COLORS.lightGold,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 19,
+  },
+  authButtons: {
+    gap: 10,
+  },
+  oauthButtonPrimary: {
+    backgroundColor: COLORS.gold,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '66',
+  },
+  oauthButtonSecondary: {
+    backgroundColor: COLORS.forestGreen,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '22',
+  },
+  oauthButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    minHeight: 22,
+  },
+  oauthButtonBrandPrimary: {
+    color: COLORS.nightBlue,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  oauthButtonPrimaryText: {
+    color: COLORS.nightBlue,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  oauthButtonBrandSecondary: {
+    color: COLORS.cream,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  oauthButtonSecondaryText: {
+    color: COLORS.cream,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  accountError: {
+    color: '#FFCDC1',
+    fontSize: 13,
+    lineHeight: 19,
   },
   partnerCard: {
     backgroundColor: COLORS.inputBg,
