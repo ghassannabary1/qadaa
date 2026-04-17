@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  ImageBackground,
   Linking,
   Modal,
   Pressable,
@@ -23,9 +24,9 @@ import {
   countsFromMissedDays,
   DailyActivitySummary,
   defaultAppState,
+  estimateCompletionDays,
   estimateCompletionDate,
   estimateMissedDaysFromShafiiSetup,
-  estimatePrayerPacePerDay,
   getRecentDailyActivity,
   hydrateState,
   PrayerCounts,
@@ -39,22 +40,27 @@ import {
   totalCounts,
 } from './src/utils/qadaa';
 import { createBackup, exportBackup, getBackupAge } from './src/utils/backup';
+import { DividerOrnament } from './src/ui/patterns/DividerOrnament';
 
 const STORAGE_KEY = 'qadaa-simple-v2';
 const ONBOARD_KEY = 'qadaa-onboarded-v1';
 const AUTO_BACKUP_INTERVAL = 30 * 1000;
 const DEFAULT_NOTES = defaultAppState().notes;
+const APP_BACKGROUND = require('./assets/patterns/backgrounds/app-islamic-floral-background.png');
 
 const COLORS = {
   darkGreen: '#0B3D2E',
   forestGreen: '#1B5E3B',
   pine: '#123B2F',
   moss: '#295B45',
-  gold: '#C9A84C',
-  lightGold: '#E8C97A',
-  roseGold: '#D6B690',
-  cream: '#F5F0E8',
-  mutedText: '#6B846B',
+  nightBlue: '#0A2A1E',
+  tileBlue: '#2E6D56',
+  mistBlue: '#B9D1C2',
+  gold: '#D5B15A',
+  lightGold: '#EFD089',
+  roseGold: '#D8C1A0',
+  cream: '#F7F3EA',
+  mutedText: '#9DB5A6',
   sectionBg: '#0D2B20',
   inputBg: '#0A2A1E',
   prayerCardBg: '#14432A',
@@ -102,14 +108,22 @@ type CopyBlock = {
   skipForNow: string;
   remaining: string;
   completed: string;
-  today: string;
+  primaryFocus: string;
+  daysCompleted: string;
+  daysLeft: string;
+  overallProgress: string;
   progressTitle: string;
   progressHint: string;
   quickAddTitle: string;
+  prayerRowsTitle: string;
+  showPrayerRows: string;
+  hidePrayerRows: string;
   resetToday: string;
   fullDayTitle: string;
   fullDayBody: string;
   fullDayToday: string;
+  fullDayPrimary: string;
+  fullDaySecondary: string;
   addDay: string;
   undoDay: string;
   undo: string;
@@ -147,7 +161,6 @@ type CopyBlock = {
   enabled: string;
   openSource: string;
   finish: string;
-  pace: string;
   needHistory: string;
   homeTab: string;
   historyTab: string;
@@ -185,14 +198,22 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     skipForNow: 'Skip for now',
     remaining: 'Prayers left',
     completed: 'Total finished',
-    today: 'Counted today',
+    primaryFocus: 'Main focus',
+    daysCompleted: 'Qadaa days completed',
+    daysLeft: 'Qadaa days left',
+    overallProgress: 'Overall progress',
     progressTitle: 'Progress',
-    progressHint: 'See what is left, your current pace, and the estimated finish date.',
+    progressHint: 'See what is left and when you finish if you count one qadaa day each day.',
     quickAddTitle: 'Quick add',
+    prayerRowsTitle: 'Prayer details',
+    showPrayerRows: 'Show prayer details',
+    hidePrayerRows: 'Hide prayer details',
     resetToday: 'Reset today',
     fullDayTitle: 'Full qadaa day',
     fullDayBody: 'One tap logs Fajr, Dhuhr, Asr, Maghrib, and Isha together.',
     fullDayToday: 'Today',
+    fullDayPrimary: 'Count by day first',
+    fullDaySecondary: 'Use prayer details only when you need to correct or fine-tune.',
     addDay: '+1 day',
     undoDay: 'Undo day',
     undo: 'Undo',
@@ -231,7 +252,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     enabled: 'Enabled',
     openSource: 'Open source',
     finish: 'Finish',
-    pace: 'Pace',
     needHistory: 'Need more history',
     homeTab: 'Home',
     historyTab: 'History',
@@ -267,14 +287,22 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     skipForNow: 'تخطَّ الآن',
     remaining: 'الصلوات المتبقية',
     completed: 'إجمالي المنجز',
-    today: 'منجز اليوم',
+    primaryFocus: 'التركيز الأساسي',
+    daysCompleted: 'أيام القضاء المنجزة',
+    daysLeft: 'أيام القضاء المتبقية',
+    overallProgress: 'التقدّم العام',
     progressTitle: 'التقدّم',
-    progressHint: 'شاهد المتبقي، ومعدل الإنجاز الحالي، والتاريخ المتوقع للانتهاء.',
+    progressHint: 'شاهد المتبقي وتاريخ الانتهاء إذا احتسبت يوم قضاء واحداً كل يوم.',
     quickAddTitle: 'إضافة سريعة',
+    prayerRowsTitle: 'تفاصيل الصلوات',
+    showPrayerRows: 'إظهار تفاصيل الصلوات',
+    hidePrayerRows: 'إخفاء تفاصيل الصلوات',
     resetToday: 'تصفير اليوم',
     fullDayTitle: 'يوم قضاء كامل',
     fullDayBody: 'ضغطة واحدة تسجل الفجر والظهر والعصر والمغرب والعشاء معاً.',
     fullDayToday: 'اليوم',
+    fullDayPrimary: 'العدّ باليوم أولاً',
+    fullDaySecondary: 'استخدم تفاصيل الصلوات فقط عند الحاجة إلى التصحيح أو الضبط.',
     addDay: '+1 يوم',
     undoDay: 'تراجع عن اليوم',
     undo: 'تراجع',
@@ -313,7 +341,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     enabled: 'مفعّل',
     openSource: 'فتح المصدر',
     finish: 'الانتهاء',
-    pace: 'المعدل',
     needHistory: 'تحتاج إلى سجل أكثر',
     homeTab: 'الرئيسية',
     historyTab: 'السجل',
@@ -533,53 +560,34 @@ export default function App() {
   }, [state.language, state.accountabilityPartnerName, totals, ]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.darkGreen }}>
-      <StatusBar style="light" />
-      {showOnboarding ? (
-        <OnboardingScreen
-          language={state.language}
-          onLanguageChange={updateLanguage}
-          onComplete={dismissOnboarding}
-        />
-      ) : (
-        <MainApp
-          state={state}
-          setState={setState}
-          totals={totals}
-          dailyHistory={dailyHistory}
-          incrementCompleted={incrementCompleted}
-          decrementCompleted={decrementCompleted}
-          completeQadaaDay={completeQadaaDay}
-          undoQadaaDay={undoQadaaDay}
-          resetToday={resetToday}
-          onLanguageChange={updateLanguage}
-          handleExport={handleExport}
-          handleImport={handleImport}
-          handleShareProgress={handleShareProgress}
-        />
-      )}
-    </View>
-  );
-}
-
-function IslamicPattern({ style }: { style?: object }) {
-  return (
-    <View style={[styles.patternContainer, style]} pointerEvents="none">
-      <View style={styles.patternRow}>
-        {['❁', '✿', '❋', '✽', '❋', '✿', '❁'].map((symbol, index) => (
-          <Text key={`a-${index}`} style={styles.patternSymbol}>
-            {symbol}
-          </Text>
-        ))}
+    <ImageBackground source={APP_BACKGROUND} style={styles.backgroundImage} imageStyle={styles.backgroundImageAsset}>
+      <View style={styles.backgroundTint}>
+        <StatusBar style="light" />
+        {showOnboarding ? (
+          <OnboardingScreen
+            language={state.language}
+            onLanguageChange={updateLanguage}
+            onComplete={dismissOnboarding}
+          />
+        ) : (
+          <MainApp
+            state={state}
+            setState={setState}
+            totals={totals}
+            dailyHistory={dailyHistory}
+            incrementCompleted={incrementCompleted}
+            decrementCompleted={decrementCompleted}
+            completeQadaaDay={completeQadaaDay}
+            undoQadaaDay={undoQadaaDay}
+            resetToday={resetToday}
+            onLanguageChange={updateLanguage}
+            handleExport={handleExport}
+            handleImport={handleImport}
+            handleShareProgress={handleShareProgress}
+          />
+        )}
       </View>
-      <View style={styles.patternRowAlt}>
-        {['✽', '❋', '✿', '❁', '✿', '❋', '✽'].map((symbol, index) => (
-          <Text key={`b-${index}`} style={styles.patternSymbolAlt}>
-            {symbol}
-          </Text>
-        ))}
-      </View>
-    </View>
+    </ImageBackground>
   );
 }
 
@@ -645,16 +653,6 @@ function TabBar({
   );
 }
 
-function Ornament({ color = COLORS.gold }: { color?: string }) {
-  return (
-    <View style={styles.ornamentRow}>
-      <View style={[styles.ornamentLine, { backgroundColor: color }]} />
-      <Text style={[styles.ornamentSymbol, { color }]}>❋</Text>
-      <View style={[styles.ornamentLine, { backgroundColor: color }]} />
-    </View>
-  );
-}
-
 function OnboardingScreen({
   language,
   onLanguageChange,
@@ -709,9 +707,8 @@ function OnboardingScreen({
   return (
     <View style={styles.onboarding}>
       <SafeAreaView style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.onboardingScrollContent}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.onboardingScrollContent}>
           <View style={styles.onboardingCard}>
-            <IslamicPattern style={styles.heroPattern} />
             <View style={styles.onboardingTopRow}>
               <View style={{ flex: 1 }} />
               <LanguageToggle language={language} onChange={onLanguageChange} />
@@ -724,7 +721,7 @@ function OnboardingScreen({
               </Text>
             </View>
 
-            <Ornament />
+            <DividerOrnament />
 
             <Text style={[styles.onboardingTitle, isArabic(language) && styles.alignRight]}>
               {copy.onboardingTitle}
@@ -856,11 +853,12 @@ function MainApp({
   handleImport: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<AppTab>('home');
+  const [showPrayerRows, setShowPrayerRows] = useState(false);
   const copy = COPY[state.language];
   const hadith = DAILY_HADITH[state.language];
   const progress = useMemo(() => {
     const percent = totals.target > 0 ? Math.min(totals.completed / totals.target, 1) : 0;
-    const pacePrayersPerDay = estimatePrayerPacePerDay(state.log);
+    const estimatedDaysLeft = estimateCompletionDays(totals.remaining, state.log);
     const finishDate = estimateCompletionDate(totals.remaining, state.log);
 
     return {
@@ -868,17 +866,17 @@ function MainApp({
       completedDays: totals.completed / PRAYERS_PER_QADAA_DAY,
       remainingDays: totals.remaining / PRAYERS_PER_QADAA_DAY,
       todayDays: totals.today / PRAYERS_PER_QADAA_DAY,
-      paceQadaaDaysPerDay: pacePrayersPerDay / PRAYERS_PER_QADAA_DAY,
+      estimatedDaysLeft:
+        estimatedDaysLeft === null ? null : estimatedDaysLeft,
       finishDate,
     };
   }, [state.log, totals]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.darkGreen }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
       <View style={styles.appShell}>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
           <View style={styles.headerCard}>
-            <IslamicPattern style={styles.headerPattern} />
             <View style={styles.headerTopRow}>
               <Text style={styles.eyebrow}>{copy.appEyebrow}</Text>
             </View>
@@ -888,11 +886,13 @@ function MainApp({
             <Text style={[styles.subtitle, isArabic(state.language) && styles.alignRight]}>
               {copy.appSummary}
             </Text>
-            <Ornament color={COLORS.gold} />
+            <DividerOrnament color={COLORS.gold} />
             <Pressable onPress={() => Linking.openURL(hadith.url)} style={styles.hadithCard}>
-              <Text style={[styles.hadithLabel, isArabic(state.language) && styles.alignRight]}>
-                {copy.dailyHadithTitle}
-              </Text>
+              <View style={styles.hadithBadge}>
+                <Text style={[styles.hadithLabel, isArabic(state.language) && styles.alignRight]}>
+                  {copy.dailyHadithTitle}
+                </Text>
+              </View>
               <Text style={[styles.hadithText, isArabic(state.language) && styles.alignRight]}>
                 {hadith.text}
               </Text>
@@ -904,13 +904,12 @@ function MainApp({
 
           {activeTab === 'home' ? (
             <>
-              <View style={styles.summaryRow}>
-                <SummaryCard label={copy.remaining} value={totals.remaining} accent={COLORS.gold} />
-                <SummaryCard label={copy.completed} value={totals.completed} accent={COLORS.success} />
-                <SummaryCard label={copy.today} value={totals.today} accent={COLORS.lightGold} />
-              </View>
-
-              <ProgressOverview copy={copy} progress={progress} language={state.language} />
+              <ProgressOverview
+                copy={copy}
+                totals={totals}
+                progress={progress}
+                language={state.language}
+              />
 
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
@@ -923,59 +922,79 @@ function MainApp({
                 </View>
 
                 <View style={styles.dayActionCard}>
-                  <IslamicPattern style={styles.cardPattern} />
                   <View style={styles.dayActionInfo}>
+                    <View style={styles.dayActionBadge}>
+                      <Text style={styles.dayActionBadgeText}>{copy.fullDayToday}</Text>
+                    </View>
                     <Text style={[styles.dayActionTitle, isArabic(state.language) && styles.alignRight]}>
                       {copy.fullDayTitle}
                     </Text>
                     <Text
                       style={[styles.dayActionSubtitle, isArabic(state.language) && styles.alignRight]}
                     >
-                      {copy.fullDayBody}
+                      {copy.fullDayPrimary}
                     </Text>
                     <Text style={[styles.dayActionMeta, isArabic(state.language) && styles.alignRight]}>
-                      {copy.fullDayToday}: {formatDecimal(progress.todayDays)}
+                      {copy.fullDaySecondary}
                     </Text>
                   </View>
                   <View style={styles.dayActionButtons}>
                     <Pressable onPress={completeQadaaDay} style={styles.fullDayButton}>
                       <Text style={styles.fullDayButtonText}>{copy.addDay}</Text>
                     </Pressable>
-                    <Pressable onPress={undoQadaaDay} style={styles.minusButton}>
+                    <Pressable onPress={undoQadaaDay} style={styles.dayActionSecondaryButton}>
                       <Text style={styles.minusButtonText}>{copy.undoDay}</Text>
                     </Pressable>
                   </View>
                 </View>
 
-                {PRAYER_KEYS.map((prayer) => {
-                  const prayerInfo = PRAYER_LABELS[prayer];
-                  const remaining = Math.max(state.target[prayer] - state.completed[prayer], 0);
-                  return (
-                    <View key={prayer} style={styles.prayerCard}>
-                      <View style={styles.prayerInfo}>
-                        <Text style={[styles.prayerLabel, isArabic(state.language) && styles.alignRight]}>
-                          {state.language === 'ar' ? prayerInfo.arabic : prayerInfo.label}
-                        </Text>
-                        <Text style={[styles.prayerMeta, isArabic(state.language) && styles.alignRight]}>
-                          {copy.doneLabel} {state.completed[prayer]} / {state.target[prayer]} · {remaining}{' '}
-                          {copy.remainingLabel}
-                        </Text>
-                      </View>
+                <Pressable
+                  onPress={() => setShowPrayerRows((current) => !current)}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {showPrayerRows ? copy.hidePrayerRows : copy.showPrayerRows}
+                  </Text>
+                </Pressable>
 
-                      <View style={styles.actionsColumn}>
-                        <Pressable
-                          onPress={() => incrementCompleted(prayer)}
-                          style={[styles.addButton, { backgroundColor: COLORS.forestGreen }]}
-                        >
-                          <Text style={styles.addButtonText}>+1</Text>
-                        </Pressable>
-                        <Pressable onPress={() => decrementCompleted(prayer)} style={styles.minusButton}>
-                          <Text style={styles.minusButtonText}>{copy.undo}</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  );
-                })}
+                {showPrayerRows
+                  ? PRAYER_KEYS.map((prayer) => {
+                      const prayerInfo = PRAYER_LABELS[prayer];
+                      const remaining = Math.max(state.target[prayer] - state.completed[prayer], 0);
+                      return (
+                        <View key={prayer} style={styles.prayerCard}>
+                          <View style={styles.prayerInfo}>
+                            <Text
+                              style={[styles.prayerLabel, isArabic(state.language) && styles.alignRight]}
+                            >
+                              {state.language === 'ar' ? prayerInfo.arabic : prayerInfo.label}
+                            </Text>
+                            <Text
+                              style={[styles.prayerMeta, isArabic(state.language) && styles.alignRight]}
+                            >
+                              {copy.doneLabel} {state.completed[prayer]} / {state.target[prayer]} ·{' '}
+                              {remaining} {copy.remainingLabel}
+                            </Text>
+                          </View>
+
+                          <View style={styles.actionsColumn}>
+                            <Pressable
+                              onPress={() => incrementCompleted(prayer)}
+                              style={[styles.addButton, { backgroundColor: COLORS.forestGreen }]}
+                            >
+                              <Text style={styles.addButtonText}>+1</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => decrementCompleted(prayer)}
+                              style={styles.minusButton}
+                            >
+                              <Text style={styles.minusButtonText}>{copy.undo}</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      );
+                    })
+                  : null}
               </View>
             </>
           ) : null}
@@ -1063,8 +1082,6 @@ function HistoryTab({
             <CalendarCell
               key={day.dayKey}
               day={day}
-              language={language}
-              copy={copy}
               selected={day.dayKey === selectedDay?.dayKey}
               onPress={() => setSelectedDayKey(day.dayKey)}
             />
@@ -1140,14 +1157,10 @@ function HistoryTab({
 
 function CalendarCell({
   day,
-  language,
-  copy,
   selected,
   onPress,
 }: {
   day: DailyActivitySummary & { isOutsideMonth?: boolean };
-  language: AppLanguage;
-  copy: CopyBlock;
   selected: boolean;
   onPress: () => void;
 }) {
@@ -1175,10 +1188,11 @@ function CalendarCell({
       <Text style={[styles.calendarDayNumber, day.isOutsideMonth && styles.calendarDayNumberOutside]}>
         {dayNumber}
       </Text>
-      <Text style={styles.calendarDayValue}>
-        {day.totalCount}
-      </Text>
-      <Text style={styles.calendarDayUnit}>{copy.prayersLabel}</Text>
+      {day.totalCount > 0 ? (
+        <View style={styles.calendarCountDot}>
+          <Text style={styles.calendarCountDotText}>{day.totalCount}</Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -1213,7 +1227,6 @@ function AnswersTab({
       <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>{copy.qnaHint}</Text>
       {TRUSTED_QA[language].map((item) => (
         <View key={item.url} style={styles.qaCard}>
-          <IslamicPattern style={styles.cardPattern} />
           <Text style={[styles.qaTitle, isArabic(language) && styles.alignRight]}>{item.title}</Text>
           <Text style={[styles.qaMeta, isArabic(language) && styles.alignRight]}>
             {item.scholar} · {item.source}
@@ -1333,16 +1346,18 @@ function MoreTab({
 
 function ProgressOverview({
   copy,
+  totals,
   progress,
   language,
 }: {
   copy: CopyBlock;
+  totals: Totals;
   progress: {
     percent: number;
     completedDays: number;
     remainingDays: number;
     todayDays: number;
-    paceQadaaDaysPerDay: number;
+    estimatedDaysLeft: number | null;
     finishDate: Date | null;
   };
   language: AppLanguage;
@@ -1352,19 +1367,42 @@ function ProgressOverview({
       <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>{copy.progressTitle}</Text>
       <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>{copy.progressHint}</Text>
       <View style={styles.progressCard}>
-        <IslamicPattern style={styles.cardPattern} />
+        <Text style={[styles.focusLabel, isArabic(language) && styles.alignRight]}>
+          {copy.primaryFocus}
+        </Text>
         <View style={styles.progressHeader}>
           <Text style={[styles.progressTitle, isArabic(language) && styles.alignRight]}>
-            {formatDecimal(progress.remainingDays)} {copy.dayUnit}
+            {totals.remaining} {copy.remaining}
           </Text>
           <Text style={styles.progressPercent}>{Math.round(progress.percent * 100)}%</Text>
+        </View>
+        <View style={styles.progressSplitLabels}>
+          <Text style={[styles.progressSplitText, isArabic(language) && styles.alignRight]}>
+            {copy.overallProgress}
+          </Text>
+          <Text style={styles.progressSplitText}>
+            {formatDecimal(progress.completedDays)} / {formatDecimal(progress.completedDays + progress.remainingDays)} {copy.dayUnit}
+          </Text>
         </View>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progress.percent * 100}%` }]} />
         </View>
+        <View style={styles.progressMiniStatsRow}>
+          <View style={styles.progressMiniStat}>
+            <Text style={styles.progressMiniLabel}>{copy.daysCompleted}</Text>
+            <Text style={[styles.progressMiniValue, { color: COLORS.success }]}>
+              {formatDecimal(progress.completedDays)}
+            </Text>
+          </View>
+          <View style={styles.progressMiniStat}>
+            <Text style={styles.progressMiniLabel}>{copy.daysLeft}</Text>
+            <Text style={[styles.progressMiniValue, { color: COLORS.lightGold }]}>
+              {formatDecimal(progress.remainingDays)}
+            </Text>
+          </View>
+        </View>
         <View style={styles.progressStatsRow}>
-          <ProgressStat label={copy.completed} value={`${formatDecimal(progress.completedDays)}d`} />
-          <ProgressStat label={copy.pace} value={`${formatDecimal(progress.paceQadaaDaysPerDay)} d/day`} />
+          <ProgressStat label={copy.daysLeft} value={formatEstimatedDaysLeft(progress.estimatedDaysLeft, copy.needHistory, copy.dayUnit)} />
           <ProgressStat label={copy.finish} value={formatFinishDate(progress.finishDate, copy.needHistory)} />
         </View>
       </View>
@@ -1377,23 +1415,6 @@ function ProgressStat({ label, value }: { label: string; value: string }) {
     <View style={styles.progressStat}>
       <Text style={styles.progressStatLabel}>{label}</Text>
       <Text style={styles.progressStatValue}>{value}</Text>
-    </View>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: number;
-  accent: string;
-}) {
-  return (
-    <View style={[styles.summaryCard, { borderColor: accent }]}>
-      <Text style={[styles.summaryValue, { color: accent }]}>{value}</Text>
-      <Text style={styles.summaryLabel}>{label}</Text>
     </View>
   );
 }
@@ -1470,7 +1491,25 @@ function formatFinishDate(date: Date | null, emptyLabel: string) {
   });
 }
 
+function formatEstimatedDaysLeft(value: number | null, emptyLabel: string, dayUnit: string) {
+  if (value === null) return emptyLabel;
+  if (value <= 0) return `0 ${dayUnit}`;
+  return `~${formatDecimal(value)} ${dayUnit}`;
+}
+
 const styles = StyleSheet.create({
+  backgroundImage: {
+    flex: 1,
+    backgroundColor: COLORS.sectionBg,
+  },
+  backgroundImageAsset: {
+    resizeMode: 'repeat',
+    opacity: 0.18,
+  },
+  backgroundTint: {
+    flex: 1,
+    backgroundColor: 'rgba(10, 33, 26, 0.84)',
+  },
   appShell: {
     flex: 1,
   },
@@ -1478,36 +1517,273 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    opacity: 0.08,
+    alignItems: 'center',
+    opacity: 0.2,
   },
-  patternRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 12,
+  floralBranch: {
+    position: 'absolute',
+    width: 118,
+    height: 118,
+    opacity: 0.35,
   },
-  patternRowAlt: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 28,
-    marginTop: 2,
+  floralBranchTopLeft: {
+    top: 12,
+    left: -8,
   },
-  patternSymbol: {
-    fontSize: 13,
-    color: COLORS.gold,
+  floralBranchBottomRight: {
+    right: -10,
+    bottom: -8,
+    transform: [{ rotate: '180deg' }],
   },
-  patternSymbolAlt: {
-    fontSize: 11,
-    color: COLORS.roseGold,
+  floralCurl: {
+    position: 'absolute',
+    borderColor: COLORS.roseGold + '44',
+    borderTopColor: 'transparent',
+    borderLeftColor: 'transparent',
+    backgroundColor: 'transparent',
+  },
+  floralCurlLarge: {
+    width: 76,
+    height: 76,
+    borderWidth: 2,
+    borderRadius: 38,
+    top: 0,
+    left: 0,
+  },
+  floralCurlSmall: {
+    width: 42,
+    height: 42,
+    borderWidth: 1.5,
+    borderRadius: 21,
+    top: 44,
+    left: 34,
+  },
+  floralLeaf: {
+    position: 'absolute',
+    width: 18,
+    height: 30,
+    borderRadius: 18,
+    backgroundColor: COLORS.forestGreen + '52',
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '2c',
+  },
+  floralLeafOne: {
+    top: 22,
+    left: 58,
+    transform: [{ rotate: '28deg' }],
+  },
+  floralLeafTwo: {
+    top: 50,
+    left: 72,
+    transform: [{ rotate: '72deg' }],
+  },
+  floralBloom: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: COLORS.gold + '48',
+    backgroundColor: COLORS.roseGold + '20',
+  },
+  floralBloomMain: {
+    width: 24,
+    height: 24,
+    top: 74,
+    left: 16,
+  },
+  medallionWrap: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medallionWrapHeader: {
+    width: 252,
+    height: 252,
+  },
+  medallionWrapHero: {
+    width: 228,
+    height: 228,
+  },
+  medallionDiamondOuter: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderWidth: 2,
+    borderColor: COLORS.gold + '44',
+    backgroundColor: COLORS.forestGreen + '10',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionDiamondMiddle: {
+    position: 'absolute',
+    width: 132,
+    height: 132,
+    borderWidth: 2,
+    borderColor: COLORS.roseGold + '55',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionDiamondInner: {
+    position: 'absolute',
+    width: 84,
+    height: 84,
+    borderWidth: 1.5,
+    borderColor: COLORS.lightGold + '66',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionPetal: {
+    position: 'absolute',
+    width: 62,
+    height: 62,
+    borderWidth: 1.5,
+    borderColor: COLORS.gold + '40',
+    backgroundColor: COLORS.pine + '08',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionPetalTop: {
+    top: 18,
+    left: '50%',
+    marginLeft: -31,
+  },
+  medallionPetalRight: {
+    right: 18,
+    top: '50%',
+    marginTop: -31,
+  },
+  medallionPetalBottom: {
+    bottom: 18,
+    left: '50%',
+    marginLeft: -31,
+  },
+  medallionPetalLeft: {
+    left: 18,
+    top: '50%',
+    marginTop: -31,
+  },
+  medallionCrossVertical: {
+    position: 'absolute',
+    width: 16,
+    height: 152,
+    borderLeftWidth: 1.5,
+    borderRightWidth: 1.5,
+    borderColor: COLORS.gold + '2d',
+  },
+  medallionCrossHorizontal: {
+    position: 'absolute',
+    width: 152,
+    height: 16,
+    borderTopWidth: 1.5,
+    borderBottomWidth: 1.5,
+    borderColor: COLORS.gold + '2d',
+  },
+  medallionCoreRing: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 2,
+    borderColor: COLORS.lightGold + '70',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.sectionBg + '66',
+  },
+  medallionCore: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: COLORS.gold + 'aa',
+  },
+  medallionAccentTop: {
+    position: 'absolute',
+    top: 46,
+    left: '50%',
+    marginLeft: -17,
+    width: 34,
+    height: 34,
+    borderWidth: 1.5,
+    borderColor: COLORS.roseGold + '55',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionAccentRight: {
+    position: 'absolute',
+    right: 46,
+    top: '50%',
+    marginTop: -17,
+    width: 34,
+    height: 34,
+    borderWidth: 1.5,
+    borderColor: COLORS.roseGold + '55',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionAccentBottom: {
+    position: 'absolute',
+    bottom: 46,
+    left: '50%',
+    marginLeft: -17,
+    width: 34,
+    height: 34,
+    borderWidth: 1.5,
+    borderColor: COLORS.roseGold + '55',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionAccentLeft: {
+    position: 'absolute',
+    left: 46,
+    top: '50%',
+    marginTop: -17,
+    width: 34,
+    height: 34,
+    borderWidth: 1.5,
+    borderColor: COLORS.roseGold + '55',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionPointTop: {
+    position: 'absolute',
+    top: -2,
+    left: '50%',
+    marginLeft: -9,
+    width: 18,
+    height: 18,
+    borderWidth: 1.5,
+    borderColor: COLORS.gold + '48',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionPointRight: {
+    position: 'absolute',
+    right: -2,
+    top: '50%',
+    marginTop: -9,
+    width: 18,
+    height: 18,
+    borderWidth: 1.5,
+    borderColor: COLORS.gold + '48',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionPointBottom: {
+    position: 'absolute',
+    bottom: -2,
+    left: '50%',
+    marginLeft: -9,
+    width: 18,
+    height: 18,
+    borderWidth: 1.5,
+    borderColor: COLORS.gold + '48',
+    transform: [{ rotate: '45deg' }],
+  },
+  medallionPointLeft: {
+    position: 'absolute',
+    left: -2,
+    top: '50%',
+    marginTop: -9,
+    width: 18,
+    height: 18,
+    borderWidth: 1.5,
+    borderColor: COLORS.gold + '48',
+    transform: [{ rotate: '45deg' }],
   },
   headerPattern: {
-    top: 8,
+    top: -8,
   },
   heroPattern: {
-    top: 10,
-  },
-  cardPattern: {
-    top: 8,
-    opacity: 0.045,
+    top: 4,
   },
   alignRight: {
     textAlign: 'right',
@@ -1538,47 +1814,44 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 18,
-    backgroundColor: COLORS.sectionBg,
+    marginHorizontal: 14,
+    marginBottom: 12,
+    padding: 10,
+    backgroundColor: 'rgba(13, 43, 32, 0.92)',
+    borderRadius: 22,
     borderTopWidth: 1,
     borderTopColor: COLORS.gold + '22',
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '14',
+    shadowColor: '#000000',
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
   },
   tabButton: {
     flex: 1,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingVertical: 12,
     alignItems: 'center',
-    backgroundColor: COLORS.inputBg,
+    backgroundColor: 'transparent',
   },
   tabButtonActive: {
-    backgroundColor: COLORS.gold,
+    backgroundColor: 'rgba(247, 243, 234, 0.12)',
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '3a',
   },
   tabButtonText: {
-    color: COLORS.cream,
+    color: COLORS.mutedText,
     fontSize: 13,
     fontWeight: '700',
   },
   tabButtonTextActive: {
-    color: COLORS.darkGreen,
-  },
-  ornamentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginVertical: 4,
-  },
-  ornamentLine: {
-    flex: 1,
-    height: 1,
-  },
-  ornamentSymbol: {
-    fontSize: 14,
+    color: COLORS.cream,
   },
   onboarding: {
     flex: 1,
-    backgroundColor: COLORS.darkGreen,
+    backgroundColor: 'transparent',
   },
   onboardingScrollContent: {
     flexGrow: 1,
@@ -1586,13 +1859,18 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   onboardingCard: {
-    backgroundColor: COLORS.sectionBg,
-    borderRadius: 24,
+    backgroundColor: 'rgba(13, 43, 32, 0.86)',
+    borderRadius: 28,
     padding: 28,
-    gap: 16,
+    gap: 18,
     borderWidth: 1,
-    borderColor: COLORS.gold + '33',
+    borderColor: COLORS.lightGold + '24',
     overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
   },
   onboardingTopRow: {
     flexDirection: 'row',
@@ -1625,12 +1903,12 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   setupCard: {
-    backgroundColor: COLORS.pine,
+    backgroundColor: 'rgba(18, 59, 47, 0.9)',
     borderRadius: 20,
-    padding: 16,
+    padding: 18,
     gap: 14,
     borderWidth: 1,
-    borderColor: COLORS.gold + '22',
+    borderColor: COLORS.lightGold + '18',
   },
   setupTitle: {
     color: COLORS.cream,
@@ -1686,15 +1964,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   onboardingButton: {
-    backgroundColor: COLORS.forestGreen,
+    backgroundColor: COLORS.gold,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.gold + '44',
+    borderColor: COLORS.lightGold + '66',
   },
   onboardingButtonText: {
-    color: COLORS.cream,
+    color: COLORS.nightBlue,
     fontSize: 17,
     fontWeight: '800',
   },
@@ -1713,17 +1991,25 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingBottom: 28,
+    paddingTop: 14,
+    paddingBottom: 34,
     gap: 18,
   },
   headerCard: {
-    backgroundColor: COLORS.sectionBg,
-    borderRadius: 24,
-    padding: 24,
-    gap: 8,
+    backgroundColor: 'rgba(13, 43, 32, 0.78)',
+    borderRadius: 30,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 22,
+    gap: 12,
     borderWidth: 1,
-    borderColor: COLORS.gold + '22',
+    borderColor: COLORS.lightGold + '22',
     overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
   },
   headerTopRow: {
     flexDirection: 'row',
@@ -1732,75 +2018,82 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   eyebrow: {
-    color: COLORS.gold,
-    fontSize: 14,
+    color: COLORS.lightGold,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 1,
+    textTransform: 'uppercase',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(247, 243, 234, 0.08)',
+    borderRadius: 999,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '20',
   },
   title: {
     color: COLORS.cream,
-    fontSize: 30,
+    fontSize: 34,
     fontWeight: '800',
-    lineHeight: 36,
+    lineHeight: 40,
   },
   subtitle: {
-    color: COLORS.mutedText,
+    color: '#C8D6CD',
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 23,
   },
   hadithCard: {
-    backgroundColor: COLORS.prayerCardBg,
-    borderRadius: 18,
-    padding: 16,
-    gap: 6,
+    backgroundColor: 'rgba(247, 243, 234, 0.08)',
+    borderRadius: 22,
+    padding: 18,
+    gap: 10,
     borderWidth: 1,
-    borderColor: COLORS.gold + '22',
+    borderColor: COLORS.lightGold + '1f',
+  },
+  hadithBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '20',
   },
   hadithLabel: {
     color: COLORS.lightGold,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
   },
   hadithText: {
     color: COLORS.cream,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
-    lineHeight: 23,
+    lineHeight: 26,
   },
   hadithSource: {
-    color: COLORS.mutedText,
+    color: '#C8D6CD',
     fontSize: 12,
     lineHeight: 18,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.sectionBg,
-    borderRadius: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-  },
-  summaryValue: {
-    fontSize: 28,
+  focusLabel: {
+    color: COLORS.lightGold,
+    fontSize: 12,
     fontWeight: '800',
-  },
-  summaryLabel: {
-    color: COLORS.mutedText,
-    fontSize: 13,
-    marginTop: 6,
+    textTransform: 'uppercase',
   },
   section: {
-    backgroundColor: COLORS.sectionBg,
-    borderRadius: 24,
+    backgroundColor: 'rgba(13, 43, 32, 0.76)',
+    borderRadius: 28,
     padding: 18,
     gap: 14,
     borderWidth: 1,
-    borderColor: COLORS.gold + '1A',
+    borderColor: COLORS.lightGold + '16',
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1814,17 +2107,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   sectionHint: {
-    color: COLORS.mutedText,
+    color: '#B7C9BE',
     fontSize: 13,
     lineHeight: 19,
   },
   secondaryButton: {
-    backgroundColor: COLORS.inputBg,
+    backgroundColor: 'rgba(247, 243, 234, 0.06)',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: COLORS.gold + '22',
+    borderColor: COLORS.lightGold + '18',
   },
   secondaryButtonText: {
     color: COLORS.cream,
@@ -1832,11 +2125,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   progressCard: {
-    backgroundColor: COLORS.prayerCardBg,
-    borderRadius: 18,
-    padding: 16,
-    gap: 14,
+    backgroundColor: 'rgba(18, 59, 47, 0.92)',
+    borderRadius: 22,
+    padding: 20,
+    gap: 16,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '22',
   },
   progressHeader: {
     flexDirection: 'row',
@@ -1844,12 +2139,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  progressSplitLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  progressSplitText: {
+    color: COLORS.mutedText,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   progressTitle: {
     flex: 1,
     color: COLORS.cream,
-    fontSize: 16,
-    fontWeight: '700',
-    lineHeight: 22,
+    fontSize: 18,
+    fontWeight: '800',
+    lineHeight: 24,
   },
   progressPercent: {
     color: COLORS.gold,
@@ -1857,7 +2163,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   progressTrack: {
-    height: 12,
+    height: 14,
     borderRadius: 999,
     backgroundColor: COLORS.progressTrack,
     overflow: 'hidden',
@@ -1868,19 +2174,42 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.progressFill,
     borderRadius: 999,
   },
+  progressMiniStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  progressMiniStat: {
+    flex: 1,
+    backgroundColor: 'rgba(247, 243, 234, 0.06)',
+    borderRadius: 16,
+    padding: 14,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '14',
+  },
+  progressMiniLabel: {
+    color: '#B7C9BE',
+    fontSize: 12,
+  },
+  progressMiniValue: {
+    fontSize: 24,
+    fontWeight: '800',
+  },
   progressStatsRow: {
     flexDirection: 'row',
     gap: 10,
   },
   progressStat: {
     flex: 1,
-    backgroundColor: COLORS.inputBg,
-    borderRadius: 14,
-    padding: 12,
+    backgroundColor: 'rgba(247, 243, 234, 0.06)',
+    borderRadius: 16,
+    padding: 14,
     gap: 6,
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '12',
   },
   progressStatLabel: {
-    color: COLORS.mutedText,
+    color: '#B7C9BE',
     fontSize: 12,
     textTransform: 'uppercase',
   },
@@ -1890,48 +2219,75 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   dayActionCard: {
-    backgroundColor: COLORS.prayerCardBg,
-    borderRadius: 18,
-    padding: 16,
-    gap: 14,
+    backgroundColor: 'rgba(20, 67, 42, 0.92)',
+    borderRadius: 22,
+    padding: 18,
+    gap: 16,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '1f',
   },
   dayActionInfo: {
     gap: 6,
   },
+  dayActionBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(247, 243, 234, 0.08)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '22',
+    marginBottom: 2,
+  },
+  dayActionBadgeText: {
+    color: COLORS.lightGold,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
   dayActionTitle: {
     color: COLORS.cream,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '800',
   },
   dayActionSubtitle: {
+    color: COLORS.cream,
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  dayActionMeta: {
     color: COLORS.mutedText,
     fontSize: 13,
     lineHeight: 19,
   },
-  dayActionMeta: {
-    color: COLORS.warning,
-    fontSize: 13,
-    fontWeight: '700',
-  },
   dayActionButtons: {
-    flexDirection: 'row',
     gap: 10,
   },
   fullDayButton: {
-    flex: 1,
-    backgroundColor: COLORS.success,
+    backgroundColor: COLORS.gold,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '66',
+  },
+  fullDayButtonText: {
+    color: COLORS.nightBlue,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  dayActionSecondaryButton: {
+    backgroundColor: 'rgba(247, 243, 234, 0.06)',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
-  },
-  fullDayButtonText: {
-    color: COLORS.cream,
-    fontSize: 16,
-    fontWeight: '800',
+    borderWidth: 1,
+    borderColor: COLORS.gold + '18',
   },
   prayerCard: {
-    backgroundColor: COLORS.prayerCardBg,
+    backgroundColor: 'rgba(20, 67, 42, 0.92)',
     borderRadius: 18,
     padding: 14,
     flexDirection: 'row',
@@ -1962,6 +2318,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '20',
   },
   addButtonText: {
     color: COLORS.cream,
@@ -2021,11 +2379,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 6,
     alignItems: 'center',
-    minHeight: 86,
+    minHeight: 72,
     justifyContent: 'center',
   },
   calendarCellEmpty: {
-    backgroundColor: COLORS.inputBg,
+    backgroundColor: 'rgba(247, 243, 234, 0.05)',
   },
   calendarCellOutside: {
     opacity: 0.45,
@@ -2035,10 +2393,10 @@ const styles = StyleSheet.create({
     borderColor: COLORS.cream,
   },
   calendarCellLight: {
-    backgroundColor: COLORS.moss,
+    backgroundColor: 'rgba(41, 91, 69, 0.85)',
   },
   calendarCellMedium: {
-    backgroundColor: COLORS.forestGreen,
+    backgroundColor: 'rgba(27, 94, 59, 0.92)',
   },
   calendarCellFull: {
     backgroundColor: COLORS.gold,
@@ -2051,19 +2409,22 @@ const styles = StyleSheet.create({
   calendarDayNumberOutside: {
     color: COLORS.roseGold,
   },
-  calendarDayValue: {
-    color: COLORS.cream,
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 4,
+  calendarCountDot: {
+    minWidth: 24,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(10, 42, 30, 0.42)',
+    alignItems: 'center',
+    marginTop: 6,
   },
-  calendarDayUnit: {
+  calendarCountDotText: {
     color: COLORS.cream,
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '800',
   },
   selectedDayCard: {
-    backgroundColor: COLORS.prayerCardBg,
+    backgroundColor: 'rgba(20, 67, 42, 0.92)',
     borderRadius: 18,
     padding: 16,
     gap: 6,
@@ -2105,7 +2466,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: COLORS.sectionBg,
+    backgroundColor: 'rgba(13, 43, 32, 0.98)',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,

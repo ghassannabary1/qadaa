@@ -208,18 +208,23 @@ export const estimatePrayerPacePerDay = (log: PrayerLogEntry[], now = new Date()
 
 export const estimateCompletionDate = (
   remainingPrayers: number,
-  log: PrayerLogEntry[],
+  _log: PrayerLogEntry[],
   now = new Date()
 ) => {
   if (remainingPrayers <= 0) return now;
-
-  const prayersPerDay = estimatePrayerPacePerDay(log, now);
-  if (prayersPerDay <= 0) return null;
-
-  const daysLeft = Math.ceil(remainingPrayers / prayersPerDay);
+  const daysLeft = Math.ceil(remainingPrayers / PRAYERS_PER_QADAA_DAY);
   const finishDate = new Date(now);
   finishDate.setDate(finishDate.getDate() + daysLeft);
   return finishDate;
+};
+
+export const estimateCompletionDays = (
+  remainingPrayers: number,
+  _log: PrayerLogEntry[],
+  _now = new Date()
+) => {
+  if (remainingPrayers <= 0) return 0;
+  return remainingPrayers / PRAYERS_PER_QADAA_DAY;
 };
 
 export const groupLogEntriesByDay = (log: PrayerLogEntry[]): HistoryDayGroup[] => {

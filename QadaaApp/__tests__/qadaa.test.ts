@@ -3,6 +3,7 @@ import {
   applyPrayerCompletion,
   countsFromMissedDays,
   defaultAppState,
+  estimateCompletionDays,
   emptyCounts,
   estimateCompletionDate,
   estimateMissedDaysFromShafiiSetup,
@@ -136,7 +137,22 @@ describe('qadaa helpers', () => {
       new Date('2026-04-11T12:00:00.000Z')
     );
 
-    expect(finishDate?.toISOString().slice(0, 10)).toBe('2026-04-16');
+    expect(finishDate?.toISOString().slice(0, 10)).toBe('2026-04-13');
+  });
+
+  it('estimates qadaa days left directly from remaining prayers', () => {
+    const daysLeft = estimateCompletionDays(
+      10,
+      [
+        { id: '1', prayer: 'fajr', createdAt: '2026-04-10T07:00:00.000Z', source: 'quick_add' },
+        { id: '2', prayer: 'dhuhr', createdAt: '2026-04-10T08:00:00.000Z', source: 'quick_add' },
+        { id: '3', prayer: 'asr', createdAt: '2026-04-11T07:00:00.000Z', source: 'quick_add' },
+        { id: '4', prayer: 'maghrib', createdAt: '2026-04-11T08:00:00.000Z', source: 'quick_add' },
+      ],
+      new Date('2026-04-11T12:00:00.000Z')
+    );
+
+    expect(daysLeft).toBe(2);
   });
 
   it('estimates missed days from a simple Shafii setup', () => {
