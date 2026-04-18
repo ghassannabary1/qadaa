@@ -1,6 +1,9 @@
 import {
+  applyFastingCompletion,
   applyFullDayCompletion,
   applyPrayerCompletion,
+  calculateKafarahPoorPeople,
+  clearTodayPrayerProgress,
   countsFromMissedDays,
   defaultAppState,
   estimateCompletionDays,
@@ -14,6 +17,8 @@ import {
   latestLogEntries,
   PRAYERS_PER_QADAA_DAY,
   remainingCounts,
+  remainingFastingDays,
+  rollbackFastingCompletion,
   rollbackFullDayCompletion,
   rollbackPrayerCompletion,
   totalCounts,
@@ -46,6 +51,16 @@ describe('qadaa helpers', () => {
     expect(state.notes).toContain('Shafi');
     expect(state.language).toBe('en');
     expect(state.accountabilityPartnerName).toBe('');
+    expect(state.notificationEnabled).toBe(false);
+    expect(state.notificationHour).toBe(21);
+    expect(state.notificationMinute).toBe(0);
+    expect(state.notificationScheduleId).toBeNull();
+    expect(state.defaultDailyAddDays).toBe(1);
+    expect(state.fastingEnabled).toBe(false);
+    expect(state.fastingTargetDays).toBe(0);
+    expect(state.fastingCompletedDays).toBe(0);
+    expect(state.fastingLog).toEqual([]);
+    expect(state.fastingKafarahDays).toBe(0);
   });
 
   it('totals all prayers', () => {
@@ -72,6 +87,16 @@ describe('qadaa helpers', () => {
     ).toBe(0);
   });
 
+  it('computes remaining fasting days', () => {
+    expect(remainingFastingDays(10, 3)).toBe(7);
+    expect(remainingFastingDays(3, 10)).toBe(0);
+  });
+
+  it('calculates kaffarah poor-person count', () => {
+    expect(calculateKafarahPoorPeople(0)).toBe(0);
+    expect(calculateKafarahPoorPeople(2)).toBe(120);
+  });
+
   it('increments a prayer count', () => {
     expect(incrementCount(emptyCounts(), 'fajr').fajr).toBe(1);
   });
@@ -84,6 +109,16 @@ describe('qadaa helpers', () => {
     expect(latestLogEntries(state.log, 1)).toHaveLength(1);
   });
 
+  it('keeps more than 100 prayer log entries for longer history', () => {
+    let state = defaultAppState();
+
+    for (let index = 0; index < 25; index += 1) {
+      state = applyFullDayCompletion(state);
+    }
+
+    expect(state.log).toHaveLength(PRAYERS_PER_QADAA_DAY * 25);
+  });
+
   it('applies a full qadaa day across all five prayers', () => {
     const state = applyFullDayCompletion(defaultAppState());
 
@@ -94,12 +129,50 @@ describe('qadaa helpers', () => {
     expect(state.completed.isha).toBe(1);
   });
 
+  it('applies multiple qadaa days in one batch when requested', () => {
+    const state = applyFullDayCompletion(defaultAppState(), 3);
+
+    expect(totalCounts(state.completed)).toBe(PRAYERS_PER_QADAA_DAY * 3);
+    expect(totalCounts(state.todayCompleted)).toBe(PRAYERS_PER_QADAA_DAY * 3);
+    expect(state.log).toHaveLength(PRAYERS_PER_QADAA_DAY * 3);
+    expect(state.completed.fajr).toBe(3);
+    expect(state.completed.isha).toBe(3);
+  });
+
   it('rolls back a prayer completion safely', () => {
     const afterAdd = applyPrayerCompletion(defaultAppState(), 'isha');
     const rolledBack = rollbackPrayerCompletion(afterAdd, 'isha');
     expect(rolledBack.completed.isha).toBe(0);
     expect(rolledBack.todayCompleted.isha).toBe(0);
     expect(rolledBack.log).toHaveLength(0);
+  });
+
+  it('applies and rolls back a fasting completion safely', () => {
+    const afterAdd = applyFastingCompletion({
+      ...defaultAppState(),
+      fastingEnabled: true,
+      fastingTargetDays: 12,
+    });
+
+    expect(afterAdd.fastingCompletedDays).toBe(1);
+    expect(afterAdd.fastingLog).toHaveLength(1);
+
+    const rolledBack = rollbackFastingCompletion(afterAdd);
+    expect(rolledBack.fastingCompletedDays).toBe(0);
+    expect(rolledBack.fastingLog).toHaveLength(0);
+  });
+
+  it('keeps more than 100 fasting log entries for longer history', () => {
+    let state = {
+      ...defaultAppState(),
+      fastingEnabled: true,
+    };
+
+    for (let index = 0; index < 125; index += 1) {
+      state = applyFastingCompletion(state);
+    }
+
+    expect(state.fastingLog).toHaveLength(125);
   });
 
   it('rolls back a full qadaa day safely', () => {
@@ -109,6 +182,51 @@ describe('qadaa helpers', () => {
     expect(totalCounts(rolledBack.completed)).toBe(0);
     expect(totalCounts(rolledBack.todayCompleted)).toBe(0);
     expect(rolledBack.log).toHaveLength(0);
+  });
+
+  it('clears only today prayer progress from totals and history', () => {
+    const state = {
+      ...defaultAppState(),
+      completed: { fajr: 2, dhuhr: 1, asr: 1, maghrib: 1, isha: 1 },
+      todayCompleted: { fajr: 1, dhuhr: 1, asr: 1, maghrib: 1, isha: 1 },
+      log: [
+        { id: 'today-fajr', prayer: 'fajr', createdAt: '2026-04-18T08:00:00.000Z', source: 'quick_add' },
+        { id: 'today-dhuhr', prayer: 'dhuhr', createdAt: '2026-04-18T10:00:00.000Z', source: 'quick_add' },
+        { id: 'today-asr', prayer: 'asr', createdAt: '2026-04-18T13:00:00.000Z', source: 'quick_add' },
+        { id: 'today-maghrib', prayer: 'maghrib', createdAt: '2026-04-18T16:00:00.000Z', source: 'quick_add' },
+        { id: 'today-isha', prayer: 'isha', createdAt: '2026-04-18T18:00:00.000Z', source: 'quick_add' },
+        { id: 'older-fajr', prayer: 'fajr', createdAt: '2026-04-17T08:00:00.000Z', source: 'quick_add' },
+      ],
+    };
+
+    const cleared = clearTodayPrayerProgress(state, new Date('2026-04-18T19:00:00.000Z'));
+
+    expect(cleared.completed).toEqual({
+      fajr: 1,
+      dhuhr: 0,
+      asr: 0,
+      maghrib: 0,
+      isha: 0,
+    });
+    expect(cleared.todayCompleted).toEqual(emptyCounts());
+    expect(cleared.log).toHaveLength(1);
+    expect(cleared.log[0].id).toBe('older-fajr');
+  });
+
+  it('undoes only the latest full qadaa day batch', () => {
+    const firstDay = applyFullDayCompletion(defaultAppState());
+    const withManualPrayer = applyPrayerCompletion(firstDay, 'fajr');
+    const secondDay = applyFullDayCompletion(withManualPrayer);
+    const rolledBack = rollbackFullDayCompletion(secondDay);
+
+    expect(rolledBack.completed).toEqual({
+      fajr: 2,
+      dhuhr: 1,
+      asr: 1,
+      maghrib: 1,
+      isha: 1,
+    });
+    expect(rolledBack.log).toHaveLength(6);
   });
 
   it('estimates prayer pace per day from the first logged day', () => {
@@ -134,6 +252,7 @@ describe('qadaa helpers', () => {
         { id: '3', prayer: 'asr', createdAt: '2026-04-11T07:00:00.000Z', source: 'quick_add' },
         { id: '4', prayer: 'maghrib', createdAt: '2026-04-11T08:00:00.000Z', source: 'quick_add' },
       ],
+      1,
       new Date('2026-04-11T12:00:00.000Z')
     );
 
@@ -149,10 +268,33 @@ describe('qadaa helpers', () => {
         { id: '3', prayer: 'asr', createdAt: '2026-04-11T07:00:00.000Z', source: 'quick_add' },
         { id: '4', prayer: 'maghrib', createdAt: '2026-04-11T08:00:00.000Z', source: 'quick_add' },
       ],
+      1,
       new Date('2026-04-11T12:00:00.000Z')
     );
 
     expect(daysLeft).toBe(2);
+  });
+
+  it('brings the finish date closer when planned daily pace is higher', () => {
+    const finishDate = estimateCompletionDate(
+      10,
+      [],
+      2,
+      new Date('2026-04-11T12:00:00.000Z')
+    );
+
+    expect(finishDate?.toISOString().slice(0, 10)).toBe('2026-04-12');
+  });
+
+  it('reduces estimated days left when planned daily pace is higher', () => {
+    const daysLeft = estimateCompletionDays(
+      10,
+      [],
+      2,
+      new Date('2026-04-11T12:00:00.000Z')
+    );
+
+    expect(daysLeft).toBe(1);
   });
 
   it('estimates missed days from a simple Shafii setup', () => {

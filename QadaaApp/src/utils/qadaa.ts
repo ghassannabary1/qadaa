@@ -7,6 +7,7 @@ export type PrayerLogEntry = {
   prayer: PrayerKey;
   createdAt: string;
   source: 'quick_add' | 'manual_adjust' | 'full_day';
+  batchId?: string | null;
 };
 
 export type HistoryDayGroup = {
@@ -21,6 +22,16 @@ export type DailyActivitySummary = {
   prayerCounts: PrayerCounts;
 };
 
+export type FastingLogEntry = {
+  id: string;
+  createdAt: string;
+};
+
+export type FastingDailySummary = {
+  dayKey: string;
+  totalCount: number;
+};
+
 export type AppState = {
   target: PrayerCounts;
   completed: PrayerCounts;
@@ -30,6 +41,16 @@ export type AppState = {
   notes: string;
   language: AppLanguage;
   accountabilityPartnerName: string;
+  notificationEnabled: boolean;
+  notificationHour: number;
+  notificationMinute: number;
+  notificationScheduleId: string | null;
+  defaultDailyAddDays: number;
+  fastingEnabled: boolean;
+  fastingTargetDays: number;
+  fastingCompletedDays: number;
+  fastingLog: FastingLogEntry[];
+  fastingKafarahDays: number;
 };
 
 export const PRAYER_KEYS: PrayerKey[] = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
@@ -72,6 +93,16 @@ export const defaultAppState = (): AppState => ({
   notes: 'Shafi‘i profile — simple counting first, detailed fiqh options later.',
   language: 'en',
   accountabilityPartnerName: '',
+  notificationEnabled: false,
+  notificationHour: 21,
+  notificationMinute: 0,
+  notificationScheduleId: null,
+  defaultDailyAddDays: 1,
+  fastingEnabled: false,
+  fastingTargetDays: 0,
+  fastingCompletedDays: 0,
+  fastingLog: [],
+  fastingKafarahDays: 0,
 });
 
 export const hydrateState = (raw?: Partial<AppState>): AppState => ({
@@ -81,6 +112,7 @@ export const hydrateState = (raw?: Partial<AppState>): AppState => ({
   completed: { ...emptyCounts(), ...(raw?.completed ?? {}) },
   todayCompleted: { ...emptyCounts(), ...(raw?.todayCompleted ?? {}) },
   log: raw?.log ?? [],
+  fastingLog: raw?.fastingLog ?? [],
 });
 
 export const totalCounts = (counts: PrayerCounts) =>
@@ -108,6 +140,12 @@ export const estimateMissedDaysFromShafiiSetup = ({
 export const remainingCounts = (target: PrayerCounts, completed: PrayerCounts) =>
   Math.max(totalCounts(target) - totalCounts(completed), 0);
 
+export const remainingFastingDays = (targetDays: number, completedDays: number) =>
+  Math.max(Math.round(targetDays) - Math.round(completedDays), 0);
+
+export const calculateKafarahPoorPeople = (kafarahDays: number) =>
+  Math.max(0, Math.round(kafarahDays)) * 60;
+
 export const incrementCount = (counts: PrayerCounts, key: PrayerKey): PrayerCounts => ({
   ...counts,
   [key]: counts[key] + 1,
@@ -120,36 +158,44 @@ export const decrementCount = (counts: PrayerCounts, key: PrayerKey): PrayerCoun
 
 export const createLogEntry = (
   prayer: PrayerKey,
-  source: PrayerLogEntry['source'] = 'quick_add'
+  source: PrayerLogEntry['source'] = 'quick_add',
+  batchId?: string
 ): PrayerLogEntry => ({
   id: `${prayer}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   prayer,
   createdAt: new Date().toISOString(),
   source,
+  batchId,
 });
 
 export const applyPrayerCompletion = (state: AppState, prayer: PrayerKey): AppState => ({
   ...state,
   completed: incrementCount(state.completed, prayer),
   todayCompleted: incrementCount(state.todayCompleted, prayer),
-  log: [createLogEntry(prayer), ...state.log].slice(0, 100),
+  log: [createLogEntry(prayer), ...state.log],
 });
 
-export const applyFullDayCompletion = (state: AppState): AppState => {
+export const applyFullDayCompletion = (state: AppState, days = 1): AppState => {
   const nextCompleted = { ...state.completed };
   const nextTodayCompleted = { ...state.todayCompleted };
-  const nextLogEntries = PRAYER_KEYS.map((prayer) => createLogEntry(prayer, 'full_day'));
+  const safeDays = Math.max(1, Math.round(days));
+  const batchId = `full-day-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const nextLogEntries = Array.from({ length: safeDays }).flatMap(() =>
+    PRAYER_KEYS.map((prayer) => createLogEntry(prayer, 'full_day', batchId))
+  );
 
-  for (const prayer of PRAYER_KEYS) {
-    nextCompleted[prayer] += 1;
-    nextTodayCompleted[prayer] += 1;
+  for (let day = 0; day < safeDays; day += 1) {
+    for (const prayer of PRAYER_KEYS) {
+      nextCompleted[prayer] += 1;
+      nextTodayCompleted[prayer] += 1;
+    }
   }
 
   return {
     ...state,
     completed: nextCompleted,
     todayCompleted: nextTodayCompleted,
-    log: [...nextLogEntries, ...state.log].slice(0, 100),
+    log: [...nextLogEntries, ...state.log],
   };
 };
 
@@ -167,6 +213,29 @@ export const rollbackPrayerCompletion = (state: AppState, prayer: PrayerKey): Ap
 };
 
 export const rollbackFullDayCompletion = (state: AppState): AppState => {
+  const latestFullDayEntry = state.log.find((entry) => entry.source === 'full_day');
+
+  if (latestFullDayEntry?.batchId) {
+    const batchEntries = state.log.filter((entry) => entry.batchId === latestFullDayEntry.batchId);
+
+    if (batchEntries.length > 0) {
+      const nextCompleted = { ...state.completed };
+      const nextTodayCompleted = { ...state.todayCompleted };
+
+      for (const entry of batchEntries) {
+        nextCompleted[entry.prayer] = Math.max(nextCompleted[entry.prayer] - 1, 0);
+        nextTodayCompleted[entry.prayer] = Math.max(nextTodayCompleted[entry.prayer] - 1, 0);
+      }
+
+      return {
+        ...state,
+        completed: nextCompleted,
+        todayCompleted: nextTodayCompleted,
+        log: state.log.filter((entry) => entry.batchId !== latestFullDayEntry.batchId),
+      };
+    }
+  }
+
   let nextState = state;
 
   for (const prayer of PRAYER_KEYS) {
@@ -177,6 +246,49 @@ export const rollbackFullDayCompletion = (state: AppState): AppState => {
 };
 
 export const latestLogEntries = (log: PrayerLogEntry[], limit = 5) => log.slice(0, limit);
+
+export const applyFastingCompletion = (state: AppState): AppState => ({
+  ...state,
+  fastingCompletedDays: state.fastingCompletedDays + 1,
+  fastingLog: [
+    {
+      id: `fast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date().toISOString(),
+    },
+    ...state.fastingLog,
+  ],
+});
+
+export const rollbackFastingCompletion = (state: AppState): AppState => ({
+  ...state,
+  fastingCompletedDays: Math.max(state.fastingCompletedDays - 1, 0),
+  fastingLog: state.fastingLog.slice(1),
+});
+
+export const clearTodayPrayerProgress = (state: AppState, now = new Date()): AppState => {
+  const todayKey = formatDayKey(now);
+  const todayEntries = state.log.filter((entry) => formatDayKey(new Date(entry.createdAt)) === todayKey);
+
+  if (todayEntries.length === 0) {
+    return {
+      ...state,
+      todayCompleted: emptyCounts(),
+    };
+  }
+
+  const nextCompleted = { ...state.completed };
+
+  for (const entry of todayEntries) {
+    nextCompleted[entry.prayer] = Math.max(nextCompleted[entry.prayer] - 1, 0);
+  }
+
+  return {
+    ...state,
+    completed: nextCompleted,
+    todayCompleted: emptyCounts(),
+    log: state.log.filter((entry) => formatDayKey(new Date(entry.createdAt)) !== todayKey),
+  };
+};
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
@@ -209,10 +321,12 @@ export const estimatePrayerPacePerDay = (log: PrayerLogEntry[], now = new Date()
 export const estimateCompletionDate = (
   remainingPrayers: number,
   _log: PrayerLogEntry[],
+  plannedDaysPerDay = 1,
   now = new Date()
 ) => {
   if (remainingPrayers <= 0) return now;
-  const daysLeft = Math.ceil(remainingPrayers / PRAYERS_PER_QADAA_DAY);
+  const safePlannedDaysPerDay = Math.max(1, plannedDaysPerDay);
+  const daysLeft = Math.ceil(remainingPrayers / (PRAYERS_PER_QADAA_DAY * safePlannedDaysPerDay));
   const finishDate = new Date(now);
   finishDate.setDate(finishDate.getDate() + daysLeft);
   return finishDate;
@@ -221,10 +335,12 @@ export const estimateCompletionDate = (
 export const estimateCompletionDays = (
   remainingPrayers: number,
   _log: PrayerLogEntry[],
+  plannedDaysPerDay = 1,
   _now = new Date()
 ) => {
   if (remainingPrayers <= 0) return 0;
-  return remainingPrayers / PRAYERS_PER_QADAA_DAY;
+  const safePlannedDaysPerDay = Math.max(1, plannedDaysPerDay);
+  return remainingPrayers / (PRAYERS_PER_QADAA_DAY * safePlannedDaysPerDay);
 };
 
 export const groupLogEntriesByDay = (log: PrayerLogEntry[]): HistoryDayGroup[] => {
@@ -275,6 +391,35 @@ export const getRecentDailyActivity = (
       dayKey,
       totalCount: totalCounts(prayerCounts),
       prayerCounts,
+    });
+  }
+
+  return summaries;
+};
+
+export const getRecentFastingActivity = (
+  log: FastingLogEntry[],
+  days = 30,
+  now = new Date()
+): FastingDailySummary[] => {
+  const activityMap = new Map<string, number>();
+
+  for (const entry of log) {
+    const dayKey = formatDayKey(new Date(entry.createdAt));
+    activityMap.set(dayKey, (activityMap.get(dayKey) ?? 0) + 1);
+  }
+
+  const currentDay = startOfDay(now);
+  const summaries: FastingDailySummary[] = [];
+
+  for (let index = 0; index < days; index += 1) {
+    const day = new Date(currentDay);
+    day.setDate(currentDay.getDate() - index);
+    const dayKey = formatDayKey(day);
+
+    summaries.push({
+      dayKey,
+      totalCount: activityMap.get(dayKey) ?? 0,
     });
   }
 

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
+import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -23,22 +24,29 @@ import {
 import {
   AppLanguage,
   AppState,
+  applyFastingCompletion,
   applyFullDayCompletion,
   applyPrayerCompletion,
+  calculateKafarahPoorPeople,
   countsFromMissedDays,
   DailyActivitySummary,
   defaultAppState,
   estimateCompletionDays,
   estimateCompletionDate,
   estimateMissedDaysFromShafiiSetup,
+  FastingDailySummary,
+  FastingLogEntry,
   getRecentDailyActivity,
+  getRecentFastingActivity,
   hydrateState,
   PrayerCounts,
   PrayerKey,
   PRAYER_KEYS,
   PRAYER_LABELS,
   PRAYERS_PER_QADAA_DAY,
+  remainingFastingDays,
   remainingCounts,
+  rollbackFastingCompletion,
   rollbackFullDayCompletion,
   rollbackPrayerCompletion,
   totalCounts,
@@ -52,6 +60,15 @@ import {
   supabase,
 } from './src/utils/auth';
 import { createBackup, exportBackup, getBackupAge } from './src/utils/backup';
+import {
+  cancelDailyReminderNotification,
+  DAILY_REMINDER_COUNT_ACTION_ID,
+  DAILY_REMINDER_KIND,
+  DAILY_REMINDER_UNDO_ACTION_ID,
+  ensureNotificationInfrastructure,
+  requestNotificationPermissionAsync,
+  scheduleDailyReminderNotification,
+} from './src/utils/notifications';
 import { DividerOrnament } from './src/ui/patterns/DividerOrnament';
 
 const STORAGE_KEY = 'qadaa-simple-v2';
@@ -59,6 +76,15 @@ const ONBOARD_KEY = 'qadaa-onboarded-v1';
 const AUTO_BACKUP_INTERVAL = 30 * 1000;
 const DEFAULT_NOTES = defaultAppState().notes;
 const APP_BACKGROUND = require('./assets/patterns/backgrounds/app-islamic-floral-background.png');
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 const COLORS = {
   darkGreen: '#0B3D2E',
@@ -82,7 +108,7 @@ const COLORS = {
   warning: '#D9B35D',
 };
 
-type AppTab = 'home' | 'history' | 'answers' | 'more';
+type AppTab = 'home' | 'history' | 'fasting' | 'answers' | 'more';
 
 type Totals = {
   target: number;
@@ -94,6 +120,7 @@ type Totals = {
 type OnboardingSetup = {
   notes: string;
   target: PrayerCounts;
+  missedDays?: number;
 };
 
 type AccountProfile = ReturnType<typeof getUserProfile>;
@@ -109,6 +136,12 @@ type CopyBlock = {
   onboardingSubtitle: string;
   onboardingEstimateTitle: string;
   onboardingEstimateBody: string;
+  onboardingTrustTitle: string;
+  onboardingTrustBody: string;
+  onboardingAssumption1: string;
+  onboardingAssumption2: string;
+  onboardingAssumption3: string;
+  onboardingEditableNote: string;
   latestPubertyAge: string;
   latestPubertyHint: string;
   regularPrayerAge: string;
@@ -158,7 +191,23 @@ type CopyBlock = {
   calendarLegend: string;
   qnaTitle: string;
   qnaHint: string;
+  qnaTrustTitle: string;
+  qnaTrustBody: string;
+  qnaScholarLabel: string;
+  qnaSourceLabel: string;
+  qnaCategoryLabel: string;
   settingsTitle: string;
+  targetSettingsTitle: string;
+  targetSettingsHint: string;
+  currentTargetLabel: string;
+  currentTargetDaysLabel: string;
+  manualDaysLabel: string;
+  manualDaysHint: string;
+  saveTarget: string;
+  recalculateTarget: string;
+  recalculateTitle: string;
+  saveEstimateChanges: string;
+  cancel: string;
   accountTitle: string;
   accountHint: string;
   connectGoogle: string;
@@ -173,6 +222,27 @@ type CopyBlock = {
   authNotReady: string;
   languageTitle: string;
   languageHint: string;
+  notificationTitle: string;
+  notificationHint: string;
+  notificationPromptTitle: string;
+  notificationPromptBody: string;
+  notificationActionCounted: string;
+  notificationActionUndo: string;
+  notificationTimeLabel: string;
+  notificationHourLabel: string;
+  notificationMinuteLabel: string;
+  notificationSaveTime: string;
+  notificationTimeInvalid: string;
+  notificationStatusLabel: string;
+  notificationStatusOn: string;
+  notificationStatusOff: string;
+  defaultAddTitle: string;
+  defaultAddHint: string;
+  defaultAddLabel: string;
+  defaultAddSave: string;
+  enableNotification: string;
+  disableNotification: string;
+  notificationPermissionDenied: string;
   accountabilityTitle: string;
   accountabilityHint: string;
   partnerNameLabel: string;
@@ -198,6 +268,34 @@ type CopyBlock = {
   doneLabel: string;
   remainingLabel: string;
   dayUnit: string;
+  fastingTab: string;
+  fastingTitle: string;
+  fastingHint: string;
+  fastingRemaining: string;
+  fastingCompleted: string;
+  fastingTarget: string;
+  fastingAddDay: string;
+  fastingUndoDay: string;
+  fastingSettingsTitle: string;
+  fastingSettingsHint: string;
+  fastingEnable: string;
+  fastingDisable: string;
+  fastingTargetLabel: string;
+  fastingTargetHint: string;
+  fastingSaveTarget: string;
+  fastingHistoryTitle: string;
+  fastingHistoryHint: string;
+  fastingEmpty: string;
+  kafarahTitle: string;
+  kafarahHint: string;
+  kafarahEligibleDaysLabel: string;
+  kafarahEligibleDaysHint: string;
+  kafarahSave: string;
+  kafarahWarning: string;
+  kafarahPoorPeopleLabel: string;
+  kafarahFastingLabel: string;
+  kafarahTrackHint: string;
+  kafarahAdvancedLabel: string;
 };
 
 const COPY: Record<AppLanguage, CopyBlock> = {
@@ -214,6 +312,17 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     onboardingEstimateTitle: "First-time Shafi'i estimate",
     onboardingEstimateBody:
       'Estimate from the latest likely puberty age until the age when regular prayer became certain. If unsure whether a prayer was prayed, count it. Menstruation days can be excluded.',
+    onboardingTrustTitle: "Why this estimate is Shafi'i",
+    onboardingTrustBody:
+      'This setup is a practical starting estimate based on trusted Shafi\'i answers. It helps you begin clearly, then edit the count later if needed.',
+    onboardingAssumption1:
+      'Start from the latest age puberty was definitely reached, not the earliest guess.',
+    onboardingAssumption2:
+      'Count until the age you are certain regular prayer became established.',
+    onboardingAssumption3:
+      'If you are unsure whether a prayer was performed, count it; menstruation days are excluded when relevant.',
+    onboardingEditableNote:
+      'This app gives an estimate to organize your qadaa. It does not replace asking a qualified scholar about your personal case.',
     latestPubertyAge: 'Latest puberty age',
     latestPubertyHint: 'Use the latest age puberty had definitely started.',
     regularPrayerAge: 'Age when regular prayer became certain',
@@ -262,8 +371,26 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     prayersLabel: 'prayers',
     calendarLegend: 'Lighter days mean less activity. Gold means a full qadaa day.',
     qnaTitle: 'Related Q&A',
-    qnaHint: 'Trusted Shafi\'i study links. We can expand this later with named scholars and categories.',
+    qnaHint: 'Q&A sourced only from Dar al-Iftaa al-Urdunniyah within Shafi\'i-tagged answers.',
+    qnaTrustTitle: 'Dar al-Iftaa al-Urdunniyah',
+    qnaTrustBody:
+      'These cards summarize answers from Dar al-Iftaa al-Urdunniyah and link to the full source. Use them for guided study and planning, not as a replacement for a personal fatwa when your case is detailed or sensitive.',
+    qnaScholarLabel: 'Scholar',
+    qnaSourceLabel: 'Source',
+    qnaCategoryLabel: 'Topic',
     settingsTitle: 'Settings',
+    targetSettingsTitle: 'Qadaa target',
+    targetSettingsHint:
+      'Adjust the amount you still need to make up. You can edit the missed qadaa days directly or recalculate with the same Shafi\'i questionnaire.',
+    currentTargetLabel: 'Current target',
+    currentTargetDaysLabel: 'Qadaa days',
+    manualDaysLabel: 'Missed qadaa days',
+    manualDaysHint: 'The app fills all five daily prayers equally from this number.',
+    saveTarget: 'Save target',
+    recalculateTarget: 'Use Shafi\'i questionnaire',
+    recalculateTitle: 'Recalculate qadaa estimate',
+    saveEstimateChanges: 'Save estimate',
+    cancel: 'Cancel',
     accountTitle: 'Account',
     accountHint: 'Sign in now so future sharing can be tied to a real user account.',
     connectGoogle: 'Continue with Google',
@@ -278,6 +405,30 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     authNotReady: 'Needs setup',
     languageTitle: 'Language',
     languageHint: 'Choose one full app language for the whole interface.',
+    notificationTitle: 'Daily reminder',
+    notificationHint:
+      'A calm daily reminder asks whether you counted today and lets you undo the latest qadaa day from the notification.',
+    notificationPromptTitle: 'Counted today?',
+    notificationPromptBody: 'Log one qadaa day or undo the latest full day right from the reminder.',
+    notificationActionCounted: 'Counted',
+    notificationActionUndo: 'Undo',
+    notificationTimeLabel: 'Time',
+    notificationHourLabel: 'Hour',
+    notificationMinuteLabel: 'Minute',
+    notificationSaveTime: 'Save reminder time',
+    notificationTimeInvalid: 'Enter a valid time using 24-hour values.',
+    notificationStatusLabel: 'Status',
+    notificationStatusOn: 'On',
+    notificationStatusOff: 'Off',
+    defaultAddTitle: 'Daily plan',
+    defaultAddHint:
+      'Choose how many qadaa days you usually aim to complete in one day. This affects the finish estimate, not the button count.',
+    defaultAddLabel: 'Planned qadaa days per day',
+    defaultAddSave: 'Save plan',
+    enableNotification: 'Turn on reminder',
+    disableNotification: 'Turn off reminder',
+    notificationPermissionDenied:
+      'Notifications are off for Qadaa. Please allow notifications in the system prompt or device settings.',
     accountabilityTitle: 'Accountability partner',
     accountabilityHint: 'Keep this private and encouraging. Share only today’s progress with one trusted friend.',
     partnerNameLabel: 'Partner name',
@@ -304,23 +455,66 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     doneLabel: 'Done',
     remainingLabel: 'remaining',
     dayUnit: 'days',
+    fastingTab: 'Fasting',
+    fastingTitle: 'Ramadan qadaa fasts',
+    fastingHint: 'Track missed Ramadan fasting days separately from prayer qadaa.',
+    fastingRemaining: 'Days left',
+    fastingCompleted: 'Completed',
+    fastingTarget: 'Target',
+    fastingAddDay: '+1 fasting day',
+    fastingUndoDay: 'Undo fasting day',
+    fastingSettingsTitle: 'Ramadan qadaa fasts',
+    fastingSettingsHint:
+      'Enable an optional fasting track, set how many missed Ramadan days you need to make up, and keep it separate from prayers.',
+    fastingEnable: 'Enable fasting track',
+    fastingDisable: 'Disable fasting track',
+    fastingTargetLabel: 'Missed Ramadan days',
+    fastingTargetHint: 'Enter the number of fasting qadaa days you need to make up.',
+    fastingSaveTarget: 'Save fasting target',
+    fastingHistoryTitle: 'Fasting history',
+    fastingHistoryHint: 'Your latest counted fasting qadaa days.',
+    fastingEmpty: 'No fasting qadaa days counted yet.',
+    kafarahTitle: 'Kafarah calculator',
+    kafarahHint:
+      'Shafi\'i note: kaffarah is not due for every missed fast. This calculator is only for Ramadan days invalidated in a way that requires kaffarah.',
+    kafarahEligibleDaysLabel: 'Kafarah-eligible Ramadan days',
+    kafarahEligibleDaysHint:
+      'Use this only for days that require kaffarah in the Shafi\'i school, such as deliberate intercourse in a Ramadan fast day before any other nullifier.',
+    kafarahSave: 'Save kaffarah days',
+    kafarahWarning:
+      'This is a planning aid, not a fatwa. Please confirm difficult personal cases with a qualified Shafi\'i scholar.',
+    kafarahPoorPeopleLabel: 'If feeding instead: poor people to feed',
+    kafarahFastingLabel: 'If able: two consecutive lunar months for each eligible day',
+    kafarahTrackHint: 'Keep kaffarah separate from qadaa fasting days.',
+    kafarahAdvancedLabel: 'Advanced',
   },
   ar: {
     dir: 'rtl',
     appEyebrow: 'قضاء',
     appTitle: 'ابنِ عادة ثابتة في قضاء الصلوات.',
-    appSummary: 'سجّل ما أنجزته اليوم، وتابع سرعتك بوضوح، وراجع انتظامك مع مرور الوقت.',
+    appSummary: 'سجّل ما أنجزته اليوم، وراجع تقدّمك، وحافظ على الاستمرار بهدوء.',
     dailyHadithTitle: 'حديث اليوم',
     dailyHadithIntro: 'تذكير في الصلاة',
     onboardingTitle: 'قضاء',
     onboardingSubtitle:
-      'اختر اللغة، واضبط تقديراً أولياً بسيطاً على المذهب الشافعي، ثم ابدأ بواجهة هادئة وسهلة.',
+      'اختر اللغة، واضبط تقديراً أولياً على المذهب الشافعي، ثم ابدأ بخطوات واضحة وبسيطة.',
     onboardingEstimateTitle: 'تقدير أولي على المذهب الشافعي',
     onboardingEstimateBody:
-      'يُقدَّر من آخر سن يُحتمل فيه البلوغ إلى السن الذي تيقنت فيه من الانتظام في الصلاة. وإذا شككت هل صليت صلاةً أم لا فاحسبها. ويمكن استثناء أيام الحيض.',
+      'يبدأ التقدير من آخر سنّ يُحتمل فيه البلوغ إلى السنّ الذي تيقنت فيه من الانتظام في الصلاة. وإذا شككت هل صليت صلاةً أم لا فاحسبها. ويمكن استثناء أيام الحيض.',
+    onboardingTrustTitle: 'لماذا هذا التقدير شافعي',
+    onboardingTrustBody:
+      'هذا التقدير بداية عملية مبنية على أجوبة شافعية موثوقة، والغرض منه أن تبدأ بوضوح ثم تعدّل العدد لاحقاً إذا احتجت.',
+    onboardingAssumption1:
+      'ابدأ من آخر سنّ تتيقن أن البلوغ كان قد حصل فيه، لا من أول احتمال.',
+    onboardingAssumption2:
+      'استمر في العد إلى السن الذي تيقنت فيه من انتظامك في الصلاة.',
+    onboardingAssumption3:
+      'إذا شككت هل صليت صلاةً أم لا فاحسبها، مع استثناء أيام الحيض عند الحاجة.',
+    onboardingEditableNote:
+      'هذا التطبيق يقدّم تقديراً لتنظيم القضاء، ولا يغني عن سؤال عالم مؤهل في حالتك الخاصة.',
     latestPubertyAge: 'آخر سن محتمل للبلوغ',
     latestPubertyHint: 'استخدم آخر سن تتيقن أن البلوغ كان قد حصل فيه.',
-    regularPrayerAge: 'السن الذي تيقنت فيه من الانتظام بالصلاة',
+    regularPrayerAge: 'السن الذي تيقنت فيه من الانتظام في الصلاة',
     regularPrayerHint: 'استخدم السن الذي عرفت فيه أنك أصبحت تصلي باستمرار.',
     menstruationDays: 'أيام الحيض في السنة القمرية',
     menstruationHint: 'اختياري. اتركه 0 إن لم يكن مناسباً.',
@@ -338,7 +532,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     progressTitle: 'التقدّم',
     progressHint: 'شاهد المتبقي وتاريخ الانتهاء إذا احتسبت يوم قضاء واحداً كل يوم.',
     consistencyTitle: 'الانتظام',
-    consistencySummary: 'تم الاحتساب في {count} من آخر 7 أيام',
+    consistencySummary: 'احتسبت في {count} من آخر 7 أيام',
     last7Days: 'آخر 7 أيام',
     quickAddTitle: 'إضافة سريعة',
     prayerRowsTitle: 'تفاصيل الصلوات',
@@ -348,13 +542,13 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     fullDayTitle: 'يوم قضاء كامل',
     fullDayBody: 'ضغطة واحدة تسجل الفجر والظهر والعصر والمغرب والعشاء معاً.',
     fullDayToday: 'اليوم',
-    fullDayPrimary: 'العدّ باليوم أولاً',
-    fullDaySecondary: 'استخدم تفاصيل الصلوات فقط عند الحاجة إلى التصحيح أو الضبط.',
+    fullDayPrimary: 'ابدأ بالعدّ اليومي',
+    fullDaySecondary: 'استخدم تفاصيل الصلوات فقط عند الحاجة إلى التصحيح أو التعديل.',
     addDay: '+1 يوم',
     undoDay: 'تراجع عن اليوم',
     undo: 'تراجع',
-    historyTitle: 'تقويم السجل',
-    historyHint: 'عرض شهري لنشاط القضاء الأخير حتى ترى انتظامك بصرياً وبشكل واضح.',
+    historyTitle: 'تقويم القضاء',
+    historyHint: 'عرض شهري لنشاطك في القضاء حتى ترى انتظامك بوضوح.',
     historyMonthLabel: 'آخر 30 يوماً',
     previousMonth: 'السابق',
     nextMonth: 'التالي',
@@ -365,49 +559,123 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     noRecordedPrayers: 'لا توجد صلوات قضاء مسجلة في هذا اليوم.',
     prayersLabel: 'صلوات',
     calendarLegend: 'كلما كان اللون أفتح كان النشاط أقل، والذهبي يعني يوم قضاء كامل.',
-    qnaTitle: 'أسئلة وأجوبة',
-    qnaHint: 'روابط موثوقة في الفقه الشافعي. يمكن توسيعها لاحقاً بأسماء العلماء والتصنيفات.',
+    qnaTitle: 'الفتاوى',
+    qnaHint: 'قسم الفتاوى هنا يعتمد فقط على أجوبة دار الإفتاء الأردنية ضمن الوسوم الشافعية.',
+    qnaTrustTitle: 'دار الإفتاء الأردنية',
+    qnaTrustBody:
+      'هذه البطاقات تلخص أجوبة من دار الإفتاء الأردنية وتربطك بالمصدر الكامل. استخدمها للفهم والتنظيم، لا بديلاً عن الفتوى الشخصية إذا كانت حالتك خاصة أو دقيقة.',
+    qnaScholarLabel: 'العالِم',
+    qnaSourceLabel: 'المصدر',
+    qnaCategoryLabel: 'الموضوع',
     settingsTitle: 'الإعدادات',
+    targetSettingsTitle: 'هدف القضاء',
+    targetSettingsHint:
+      'عدّل المقدار الذي تريد قضاؤه. يمكنك إدخال عدد أيام القضاء مباشرة أو إعادة الحساب عبر نفس الاستبيان الشافعي.',
+    currentTargetLabel: 'الهدف الحالي',
+    currentTargetDaysLabel: 'أيام القضاء',
+    manualDaysLabel: 'أيام القضاء الفائتة',
+    manualDaysHint: 'سيملأ التطبيق الصلوات الخمس اليومية بنفس هذا العدد.',
+    saveTarget: 'حفظ الهدف',
+    recalculateTarget: 'إعادة الحساب بالاستبيان الشافعي',
+    recalculateTitle: 'إعادة تقدير القضاء',
+    saveEstimateChanges: 'حفظ التقدير',
+    cancel: 'إلغاء',
     accountTitle: 'الحساب',
-    accountHint: 'سجّل الدخول الآن حتى نربط المشاركة لاحقاً بحساب مستخدم حقيقي.',
-    connectGoogle: 'المتابعة عبر Google',
-    connectFacebook: 'المتابعة عبر Facebook',
+    accountHint: 'يمكنك تسجيل الدخول الآن حتى ترتبط المشاركة لاحقاً بحسابك.',
+    connectGoogle: 'المتابعة باستخدام جوجل',
+    connectFacebook: 'المتابعة باستخدام فيسبوك',
     connectedAs: 'متصل باسم',
     signOut: 'تسجيل الخروج',
-    authComingSoon: 'سيكون هذا الحساب أساس مشاركة التقدم مع أشخاص موثوقين لاحقاً.',
-    authNeedsSetup: 'أضف مفاتيح مشروع Supabase لتفعيل تسجيل الدخول عبر Google وFacebook.',
-    sharingReadyHint: 'يمنحنا Google وFacebook هوية المستخدم اللازمة قبل إضافة مشاركة التقدم.',
+    authComingSoon: 'سيكون هذا الحساب أساس مشاركة التقدّم مع أشخاص موثوقين لاحقاً.',
+    authNeedsSetup: 'أضف مفاتيح مشروع Supabase لتفعيل تسجيل الدخول عبر جوجل وفيسبوك.',
+    sharingReadyHint: 'يوفر لنا جوجل وفيسبوك هوية المستخدم اللازمة قبل إضافة مشاركة التقدّم.',
     authConfiguredLabel: 'إعداد المصادقة',
     authReady: 'جاهز',
     authNotReady: 'يحتاج إعداداً',
     languageTitle: 'اللغة',
     languageHint: 'اختر لغة واحدة كاملة لواجهة التطبيق كلها.',
-    accountabilityTitle: 'شريك المحاسبة',
+    notificationTitle: 'التذكير اليومي',
+    notificationHint:
+      'تذكير هادئ يسألك: هل احتسبت اليوم؟ ويتيح لك التراجع عن آخر يوم قضاء مباشرة من الإشعار.',
+    notificationPromptTitle: 'هل احتسبت اليوم؟',
+    notificationPromptBody: 'سجّل يوم قضاء واحداً أو تراجع عن آخر يوم كامل مباشرة من الإشعار.',
+    notificationActionCounted: 'تم الاحتساب',
+    notificationActionUndo: 'تراجع',
+    notificationTimeLabel: 'الوقت',
+    notificationHourLabel: 'الساعة',
+    notificationMinuteLabel: 'الدقيقة',
+    notificationSaveTime: 'حفظ وقت التذكير',
+    notificationTimeInvalid: 'أدخل وقتاً صحيحاً بصيغة 24 ساعة.',
+    notificationStatusLabel: 'الحالة',
+    notificationStatusOn: 'مفعّل',
+    notificationStatusOff: 'متوقف',
+    defaultAddTitle: 'الخطة اليومية',
+    defaultAddHint:
+      'اختر عدد أيام القضاء التي تنوي إنجازها عادةً في اليوم. يؤثر هذا على تقدير الانتهاء فقط، لا على عدد الزر.',
+    defaultAddLabel: 'أيام القضاء المخططة يومياً',
+    defaultAddSave: 'حفظ الخطة',
+    enableNotification: 'تفعيل التذكير',
+    disableNotification: 'إيقاف التذكير',
+    notificationPermissionDenied:
+      'تنبيهات Qadaa غير مفعّلة. اسمح بالتنبيهات من نافذة النظام أو من إعدادات الجهاز.',
+    accountabilityTitle: 'شريك المتابعة',
     accountabilityHint: 'اجعلها مشاركة خاصة ومشجعة، وشارك إنجاز اليوم فقط مع شخص تثق به.',
     partnerNameLabel: 'اسم الشريك',
     partnerNamePlaceholder: 'صديق موثوق',
-    shareProgress: 'مشاركة إنجاز اليوم',
+    shareProgress: 'مشاركة تقدّم اليوم',
     notesTitle: 'ملاحظات',
-    notesPlaceholder: 'كيف تحسب القضاء عندك؟',
+    notesPlaceholder: 'كيف تنظم قضاءك؟',
     comingNextTitle: 'لاحقاً',
     comingNextBody:
-      'يمكن إضافة تنبيهات يومية لاحقاً تسألك هل تم احتساب اليوم، مع خيار سريع للتراجع.',
+      'يمكن إضافة مزيد من التنبيهات الذكية لاحقاً، مع خيارات أسرع للتسجيل والتراجع.',
     backupTitle: 'نسخ البيانات',
     backupHint: 'بياناتك تُحفظ محلياً تلقائياً. ويمكنك التصدير في أي وقت لنسخة يدوية.',
     exportBackup: 'تصدير نسخة',
     importBackup: 'استيراد نسخة',
     autoBackup: 'الحفظ التلقائي',
     enabled: 'مفعّل',
-    openSource: 'فتح المصدر',
+    openSource: 'عرض المصدر',
     finish: 'الانتهاء',
-    needHistory: 'تحتاج إلى سجل أكثر',
+    needHistory: 'تحتاج إلى مزيد من السجل',
     homeTab: 'الرئيسية',
-    historyTab: 'السجل',
-    answersTab: 'الأسئلة',
-    moreTab: 'المزيد',
+    historyTab: 'التقويم',
+    answersTab: 'الفتاوى',
+    moreTab: 'الإعدادات',
     doneLabel: 'تم',
     remainingLabel: 'متبقٍ',
     dayUnit: 'يوم',
+    fastingTab: 'الصيام',
+    fastingTitle: 'قضاء صيام رمضان',
+    fastingHint: 'تتبّع أيام قضاء رمضان بشكل منفصل عن قضاء الصلوات.',
+    fastingRemaining: 'الأيام المتبقية',
+    fastingCompleted: 'المنجز',
+    fastingTarget: 'الهدف',
+    fastingAddDay: '+1 يوم صيام',
+    fastingUndoDay: 'تراجع عن يوم صيام',
+    fastingSettingsTitle: 'قضاء صيام رمضان',
+    fastingSettingsHint:
+      'فعّل مساراً اختيارياً للصيام، وحدد عدد أيام رمضان التي تريد قضاءها، مع بقائها منفصلة عن الصلوات.',
+    fastingEnable: 'تفعيل مسار الصيام',
+    fastingDisable: 'إيقاف مسار الصيام',
+    fastingTargetLabel: 'أيام رمضان الفائتة',
+    fastingTargetHint: 'أدخل عدد أيام قضاء الصيام التي تحتاج إليها.',
+    fastingSaveTarget: 'حفظ هدف الصيام',
+    fastingHistoryTitle: 'سجل الصيام',
+    fastingHistoryHint: 'أحدث أيام قضاء الصيام التي احتسبتها.',
+    fastingEmpty: 'لم يتم تسجيل أي يوم صيام بعد.',
+    kafarahTitle: 'حاسبة الكفارة',
+    kafarahHint:
+      'تنبيه شافعي: الكفارة لا تجب في كل يوم فائت. هذه الحاسبة مخصصة فقط لأيام رمضان التي توجب الكفارة.',
+    kafarahEligibleDaysLabel: 'أيام رمضان الموجبة للكفارة',
+    kafarahEligibleDaysHint:
+      'استخدم هذا فقط للأيام التي تجب فيها الكفارة في المذهب الشافعي، مثل الجماع المتعمد نهار رمضان قبل حصول مفطر آخر.',
+    kafarahSave: 'حفظ أيام الكفارة',
+    kafarahWarning:
+      'هذه أداة تنظيمية وليست فتوى. في المسائل الشخصية المعقدة يُرجى الرجوع إلى عالم شافعي مؤهل.',
+    kafarahPoorPeopleLabel: 'عند الإطعام: عدد المساكين',
+    kafarahFastingLabel: 'عند القدرة: شهران قمريان متتابعان عن كل يوم موجب للكفارة',
+    kafarahTrackHint: 'أبقِ الكفارة منفصلة عن أيام قضاء الصيام.',
+    kafarahAdvancedLabel: 'متقدم',
   },
 };
 
@@ -424,44 +692,194 @@ const DAILY_HADITH = {
   },
 };
 
-const TRUSTED_QA = {
+type TrustedQaItem = {
+  title: string;
+  category: string;
+  scholar: string;
+  source: string;
+  summary: string;
+  url: string;
+};
+
+const ONBOARDING_SOURCES: Record<
+  AppLanguage,
+  Array<{ label: string; url: string }>
+> = {
   en: [
     {
-      title: 'How should I calculate missed prayers?',
-      scholar: 'Qibla / Shafi’i fiqh answer',
-      source: 'IslamQA.org',
-      summary:
-        'Count from the latest time you could have reached puberty until the point you are sure you prayed regularly. Menstruation days are excluded.',
+      label: 'Dr. Mashhour Fawaz: making up prayers after puberty',
+      url: 'https://www.fatawah.net/Fatawah/1255.aspx',
+    },
+    {
+      label: 'Qibla: estimating missed prayers',
       url: 'https://islamqa.org/shafii/qibla-shafii/34205/making-up-missed-prayers/',
     },
     {
-      title: 'Do missed prayers still need to be made up?',
-      scholar: 'Shaykh Jamir Meah',
-      source: 'SeekersGuidance via IslamQA.org',
-      summary:
-        'Missed prayers should be made up from puberty until you are certain you started praying consistently, and worked through steadily.',
+      label: 'SeekersGuidance: making up missed prayers',
       url: 'https://islamqa.org/shafii/seekersguidance-shafii/168871/is-it-necessary-to-make-up-missed-prayers-shafii/',
     },
   ],
   ar: [
     {
-      title: 'كيف أقدّر الصلوات الفائتة؟',
-      scholar: 'جواب شافعي من Qibla',
-      source: 'IslamQA.org',
-      summary:
-        'يبدأ التقدير من آخر وقت يُحتمل فيه البلوغ إلى الوقت الذي تيقنت فيه من انتظامك في الصلاة، مع استثناء أيام الحيض.',
+      label: 'د. مشهور فواز: هل يجب قضاء الفوائت بعد البلوغ؟',
+      url: 'https://www.fatawah.net/Fatawah/1255.aspx',
+    },
+    {
+      label: 'Qibla: تقدير الصلوات الفائتة',
       url: 'https://islamqa.org/shafii/qibla-shafii/34205/making-up-missed-prayers/',
     },
     {
-      title: 'هل يجب قضاء الصلوات الفائتة؟',
-      scholar: 'الشيخ جميل ميه',
-      source: 'IslamQA.org',
-      summary:
-        'يُقضى ما فات من البلوغ إلى الزمن الذي تيقنت فيه من المحافظة على الصلاة، ويكون القضاء بالتدرج والاستمرار.',
+      label: 'SeekersGuidance: قضاء الصلوات',
       url: 'https://islamqa.org/shafii/seekersguidance-shafii/168871/is-it-necessary-to-make-up-missed-prayers-shafii/',
     },
   ],
 };
+
+const TRUSTED_QA: Record<AppLanguage, TrustedQaItem[]> = {
+  en: [
+    {
+      title: 'Can I make up missed obligatory prayers during the time of a current prayer?',
+      category: 'Prayer qadaa',
+      scholar: 'Darul Iftaa Jordan',
+      source: 'Jordanian Iftaa via IslamQA.org',
+      summary:
+        'Missed obligatory prayers are a debt due to Allah and must be made up. Deliberately missed prayers should be made up immediately, even if that takes one’s available time.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226885/is-it-permissible-to-make-up-missed-obligatory-prayers-at-the-time-of-a-current-prayer/',
+    },
+    {
+      title: 'Can missed prayers be made up at disliked times?',
+      category: 'Prayer qadaa',
+      scholar: 'Darul Iftaa Jordan',
+      source: 'Jordanian Iftaa via IslamQA.org',
+      summary:
+        'Yes. Missed prayers may be made up at any time, including times in which voluntary prayer is otherwise disliked.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/225513/is-it-permissible-to-make-up-missed-prayers-at-the-times-in-which-praying-is-disliked/',
+    },
+    {
+      title: 'What if someone broke many Ramadan fasts without a valid excuse?',
+      category: 'Fasting qadaa',
+      scholar: 'Darul Iftaa Jordan',
+      source: 'Jordanian Iftaa via IslamQA.org',
+      summary:
+        'They must repent and make up the missed days. If the makeup was delayed until later Ramadans without excuse, feeding for each missed day is also due according to the answer.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226057/broke-many-fasts-in-ramadan-with-no-valid-excuse/',
+    },
+    {
+      title: 'Does foreplay or ejaculation in Ramadan require makeup?',
+      category: 'Fasting qadaa',
+      scholar: 'Darul Iftaa Jordan',
+      source: 'Jordanian Iftaa via IslamQA.org',
+      summary:
+        'If ejaculation happens through forbidden foreplay, the fast is invalid and that day must be made up. The answer distinguishes this from other cases and does not treat it as general kaffarah for every invalid fast.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226571/it-is-forbidden-for-a-fasting-person-to-satisfy-sexual-desire-by-foreplay/',
+    },
+    {
+      title: 'Can kaffarah feeding be given to one poor person if many are hard to find?',
+      category: 'Kafarah',
+      scholar: 'Darul Iftaa Jordan',
+      source: 'Jordanian Iftaa via IslamQA.org',
+      summary:
+        'The answer discusses a permissive view when finding the full number is difficult, while still treating kaffarah as a distinct obligation with detailed rules.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/228836/ruling-on-giving-the-value-of-expiatory-gifts-to-one-person/',
+    },
+  ],
+  ar: [
+    {
+      title: 'هل يجوز قضاء الصلوات الفائتة وقت الصلاة الحاضرة؟',
+      category: 'قضاء الصلاة',
+      scholar: 'دار الإفتاء الأردنية',
+      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      summary:
+        'الصلوات الفائتة دين في ذمة المسلم ويجب قضاؤها. وما فات عمداً يجب المبادرة إلى قضائه بحسب الاستطاعة.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226885/is-it-permissible-to-make-up-missed-obligatory-prayers-at-the-time-of-a-current-prayer/',
+    },
+    {
+      title: 'هل يجوز قضاء الصلوات الفائتة في أوقات الكراهة؟',
+      category: 'قضاء الصلاة',
+      scholar: 'دار الإفتاء الأردنية',
+      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      summary:
+        'نعم، يجوز قضاء الصلوات الفائتة في كل وقت، حتى في الأوقات التي تُكره فيها بعض النوافل.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/225513/is-it-permissible-to-make-up-missed-prayers-at-the-times-in-which-praying-is-disliked/',
+    },
+    {
+      title: 'ماذا يلزم من أفطر أياماً كثيرة من رمضان بلا عذر؟',
+      category: 'قضاء الصيام',
+      scholar: 'دار الإفتاء الأردنية',
+      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      summary:
+        'يلزمه التوبة وقضاء الأيام الفائتة، وإذا أخر القضاء إلى رمضانات لاحقة بلا عذر لزمته الفدية عن كل يوم بحسب ما ورد في الجواب.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226057/broke-many-fasts-in-ramadan-with-no-valid-excuse/',
+    },
+    {
+      title: 'هل المباشرة أو الإنزال في نهار رمضان يوجب القضاء؟',
+      category: 'قضاء الصيام',
+      scholar: 'دار الإفتاء الأردنية',
+      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      summary:
+        'إذا حصل الإنزال بسبب مباشرة محرمة فسد الصوم ووجب قضاء ذلك اليوم، مع التفريق بين هذه الصورة وبين الكفارة الخاصة.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226571/it-is-forbidden-for-a-fasting-person-to-satisfy-sexual-desire-by-foreplay/',
+    },
+    {
+      title: 'هل يجوز دفع كفارة الإطعام لمسكين واحد عند التعذر؟',
+      category: 'الكفارة',
+      scholar: 'دار الإفتاء الأردنية',
+      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      summary:
+        'يتناول الجواب وجهاً ميسراً عند صعوبة إيجاد العدد الكامل، مع بقاء الكفارة باباً مستقلاً له شروطه وتفصيله.',
+      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/228836/ruling-on-giving-the-value-of-expiatory-gifts-to-one-person/',
+    },
+  ],
+};
+
+function buildDailyReminderCopy(copy: CopyBlock) {
+  return {
+    title: copy.notificationPromptTitle,
+    body: copy.notificationPromptBody,
+    countActionTitle: copy.notificationActionCounted,
+    undoActionTitle: copy.notificationActionUndo,
+  };
+}
+
+function buildShafiiEstimate({
+  language,
+  latestPubertyAge,
+  regularPrayerAge,
+  menstruationDays,
+}: {
+  language: AppLanguage;
+  latestPubertyAge: string;
+  regularPrayerAge: string;
+  menstruationDays: string;
+}): OnboardingSetup | null {
+  const parsedPubertyAge = Number(latestPubertyAge);
+  const parsedRegularPrayerAge = Number(regularPrayerAge);
+  const parsedMenstruationDays = Number(menstruationDays);
+
+  if (
+    Number.isNaN(parsedPubertyAge) ||
+    Number.isNaN(parsedRegularPrayerAge) ||
+    latestPubertyAge.trim() === '' ||
+    regularPrayerAge.trim() === ''
+  ) {
+    return null;
+  }
+
+  const missedDays = estimateMissedDaysFromShafiiSetup({
+    latestPubertyAge: parsedPubertyAge,
+    regularPrayerAge: parsedRegularPrayerAge,
+    menstruationDaysPerYear: Number.isNaN(parsedMenstruationDays) ? 0 : parsedMenstruationDays,
+  });
+
+  return {
+    missedDays,
+    target: countsFromMissedDays(missedDays),
+    notes:
+      language === 'ar'
+        ? `تقدير شافعي: من سن ${parsedPubertyAge} إلى سن ${parsedRegularPrayerAge}.`
+        : `Shafi'i estimate: counted from age ${parsedPubertyAge} to age ${parsedRegularPrayerAge}.`,
+  };
+}
 
 export default function App() {
   const [state, setState] = useState<AppState>(defaultAppState());
@@ -555,6 +973,44 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    ensureNotificationInfrastructure(buildDailyReminderCopy(COPY[state.language])).catch((error) => {
+      console.warn('Failed to configure notifications', error);
+    });
+  }, [state.language]);
+
+  useEffect(() => {
+    const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data as { kind?: string } | undefined;
+      if (data?.kind !== DAILY_REMINDER_KIND) return;
+
+      if (response.actionIdentifier === DAILY_REMINDER_COUNT_ACTION_ID) {
+        setState((current) => applyFullDayCompletion(current));
+      }
+
+      if (response.actionIdentifier === DAILY_REMINDER_UNDO_ACTION_ID) {
+        setState((current) => rollbackFullDayCompletion(current));
+      }
+    };
+
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          handleNotificationResponse(response);
+          Notifications.clearLastNotificationResponseAsync().catch(() => undefined);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load last notification response', error);
+      });
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   const totals = useMemo<Totals>(() => {
     const target = totalCounts(state.target);
     const completed = totalCounts(state.completed);
@@ -583,20 +1039,108 @@ export default function App() {
 
   const updateLanguage = (language: AppLanguage) => {
     setState((current) => ({ ...current, language }));
+
+    if (state.notificationEnabled) {
+      scheduleDailyReminderNotification({
+        hour: state.notificationHour,
+        minute: state.notificationMinute,
+        copy: buildDailyReminderCopy(COPY[language]),
+        existingIdentifier: state.notificationScheduleId,
+      })
+        .then((notificationScheduleId) => {
+          setState((current) => ({ ...current, notificationScheduleId, language }));
+        })
+        .catch((error) => {
+          console.warn('Failed to refresh notification language', error);
+        });
+    }
   };
+
+  const enableDailyReminder = useCallback(async () => {
+    const copy = COPY[state.language];
+    const granted = await requestNotificationPermissionAsync();
+
+    if (!granted) {
+      Alert.alert(copy.notificationTitle, copy.notificationPermissionDenied);
+      return;
+    }
+
+    try {
+      const notificationScheduleId = await scheduleDailyReminderNotification({
+        hour: state.notificationHour,
+        minute: state.notificationMinute,
+        copy: buildDailyReminderCopy(copy),
+        existingIdentifier: state.notificationScheduleId,
+      });
+
+      setState((current) => ({
+        ...current,
+        notificationEnabled: true,
+        notificationScheduleId,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to schedule reminder.';
+      Alert.alert(copy.notificationTitle, message);
+    }
+  }, [
+    state.language,
+    state.notificationHour,
+    state.notificationMinute,
+    state.notificationScheduleId,
+  ]);
+
+  const disableDailyReminder = useCallback(async () => {
+    await cancelDailyReminderNotification(state.notificationScheduleId);
+    setState((current) => ({
+      ...current,
+      notificationEnabled: false,
+      notificationScheduleId: null,
+    }));
+  }, [state.notificationScheduleId]);
+
+  const updateDailyReminderTime = useCallback(
+    async (hour: number, minute: number) => {
+      const copy = COPY[state.language];
+
+      try {
+        if (state.notificationEnabled) {
+          const notificationScheduleId = await scheduleDailyReminderNotification({
+            hour,
+            minute,
+            copy: buildDailyReminderCopy(copy),
+            existingIdentifier: state.notificationScheduleId,
+          });
+
+          setState((current) => ({
+            ...current,
+            notificationHour: hour,
+            notificationMinute: minute,
+            notificationScheduleId,
+          }));
+          return;
+        }
+
+        setState((current) => ({
+          ...current,
+          notificationHour: hour,
+          notificationMinute: minute,
+        }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update reminder time.';
+        Alert.alert(copy.notificationTitle, message);
+      }
+    },
+    [state.language, state.notificationEnabled, state.notificationScheduleId]
+  );
 
   const resetToday = () => {
     const copy = COPY[state.language];
     Alert.alert(copy.resetToday, copy.resetToday, [
-      { text: 'Cancel', style: 'cancel' },
+      { text: copy.cancel, style: 'cancel' },
       {
         text: copy.resetToday,
         style: 'destructive',
-        onPress: () =>
-          setState((current) => ({
-            ...current,
-            todayCompleted: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 },
-          })),
+        onPress: () => setState((current) => clearTodayPrayerProgress(current)),
       },
     ]);
   };
@@ -640,6 +1184,14 @@ export default function App() {
     const copy = COPY[state.language];
     Alert.alert(copy.importBackup, 'Coming soon.', [{ text: 'OK' }]);
   }, [state.language]);
+
+  const handleUpdateTarget = useCallback((setup: OnboardingSetup) => {
+    setState((current) => ({
+      ...current,
+      target: setup.target,
+      notes: current.notes === DEFAULT_NOTES ? setup.notes : `${setup.notes}\n\n${current.notes}`,
+    }));
+  }, []);
 
   const handleShareProgress = useCallback(async () => {
     const copy = COPY[state.language];
@@ -730,6 +1282,16 @@ export default function App() {
             onGoogleSignIn={() => handleProviderSignIn('google')}
             onFacebookSignIn={() => handleProviderSignIn('facebook')}
             onSignOut={handleSignOut}
+            notificationEnabled={state.notificationEnabled}
+            notificationHour={state.notificationHour}
+            notificationMinute={state.notificationMinute}
+            onEnableDailyReminder={enableDailyReminder}
+            onDisableDailyReminder={disableDailyReminder}
+            onNotificationTimeChange={updateDailyReminderTime}
+            onUpdateTarget={handleUpdateTarget}
+            onDefaultDailyAddDaysChange={(defaultDailyAddDays) =>
+              setState((current) => ({ ...current, defaultDailyAddDays }))
+            }
           />
         )}
       </View>
@@ -770,14 +1332,17 @@ function TabBar({
   activeTab,
   onChange,
   copy,
+  fastingEnabled,
 }: {
   activeTab: AppTab;
   onChange: (tab: AppTab) => void;
   copy: CopyBlock;
+  fastingEnabled: boolean;
 }) {
   const tabs: { key: AppTab; label: string }[] = [
     { key: 'home', label: copy.homeTab },
     { key: 'history', label: copy.historyTab },
+    ...(fastingEnabled ? [{ key: 'fasting' as AppTab, label: copy.fastingTab }] : []),
     { key: 'answers', label: copy.answersTab },
     { key: 'more', label: copy.moreTab },
   ];
@@ -808,47 +1373,20 @@ function OnboardingScreen({
   onLanguageChange: (language: AppLanguage) => void;
   onComplete: (setup?: OnboardingSetup) => void;
 }) {
-  const copy = COPY[language];
   const [latestPubertyAge, setLatestPubertyAge] = useState('15');
   const [regularPrayerAge, setRegularPrayerAge] = useState('');
   const [menstruationDays, setMenstruationDays] = useState('0');
-
-  const parsedPubertyAge = Number(latestPubertyAge);
-  const parsedRegularPrayerAge = Number(regularPrayerAge);
-  const parsedMenstruationDays = Number(menstruationDays);
-
-  const estimate = useMemo(() => {
-    if (
-      Number.isNaN(parsedPubertyAge) ||
-      Number.isNaN(parsedRegularPrayerAge) ||
-      latestPubertyAge.trim() === '' ||
-      regularPrayerAge.trim() === ''
-    ) {
-      return null;
-    }
-
-    const missedDays = estimateMissedDaysFromShafiiSetup({
-      latestPubertyAge: parsedPubertyAge,
-      regularPrayerAge: parsedRegularPrayerAge,
-      menstruationDaysPerYear: Number.isNaN(parsedMenstruationDays) ? 0 : parsedMenstruationDays,
-    });
-
-    return {
-      missedDays,
-      target: countsFromMissedDays(missedDays),
-      notes:
-        language === 'ar'
-          ? `تقدير شافعي أولي: من سن ${parsedPubertyAge} إلى سن ${parsedRegularPrayerAge}.`
-          : `Shafi'i estimate setup: counted from age ${parsedPubertyAge} to age ${parsedRegularPrayerAge}.`,
-    };
-  }, [
-    language,
-    latestPubertyAge,
-    parsedMenstruationDays,
-    parsedPubertyAge,
-    parsedRegularPrayerAge,
-    regularPrayerAge,
-  ]);
+  const copy = COPY[language];
+  const estimate = useMemo(
+    () =>
+      buildShafiiEstimate({
+        language,
+        latestPubertyAge,
+        regularPrayerAge,
+        menstruationDays,
+      }),
+    [language, latestPubertyAge, regularPrayerAge, menstruationDays]
+  );
 
   return (
     <View style={styles.onboarding}>
@@ -884,41 +1422,16 @@ function OnboardingScreen({
                 {copy.onboardingEstimateBody}
               </Text>
 
-              <SetupField
-                label={copy.latestPubertyAge}
-                hint={copy.latestPubertyHint}
-                value={latestPubertyAge}
-                onChangeText={setLatestPubertyAge}
-                placeholder="15"
+              <ShafiiEstimateFields
                 language={language}
+                latestPubertyAge={latestPubertyAge}
+                regularPrayerAge={regularPrayerAge}
+                menstruationDays={menstruationDays}
+                onLatestPubertyAgeChange={setLatestPubertyAge}
+                onRegularPrayerAgeChange={setRegularPrayerAge}
+                onMenstruationDaysChange={setMenstruationDays}
+                estimate={estimate}
               />
-              <SetupField
-                label={copy.regularPrayerAge}
-                hint={copy.regularPrayerHint}
-                value={regularPrayerAge}
-                onChangeText={setRegularPrayerAge}
-                placeholder="18"
-                language={language}
-              />
-              <SetupField
-                label={copy.menstruationDays}
-                hint={copy.menstruationHint}
-                value={menstruationDays}
-                onChangeText={setMenstruationDays}
-                placeholder="0"
-                language={language}
-              />
-
-              {estimate ? (
-                <View style={styles.estimateResult}>
-                  <Text style={[styles.estimateResultTitle, isArabic(language) && styles.alignRight]}>
-                    {copy.estimateBacklog}: {estimate.missedDays}
-                  </Text>
-                  <Text style={[styles.estimateResultBody, isArabic(language) && styles.alignRight]}>
-                    {copy.estimateBacklogBody}
-                  </Text>
-                </View>
-              ) : null}
             </View>
 
             <View style={styles.onboardingButtons}>
@@ -969,6 +1482,101 @@ function SetupField({
   );
 }
 
+function ShafiiEstimateFields({
+  language,
+  latestPubertyAge,
+  regularPrayerAge,
+  menstruationDays,
+  onLatestPubertyAgeChange,
+  onRegularPrayerAgeChange,
+  onMenstruationDaysChange,
+  estimate,
+}: {
+  language: AppLanguage;
+  latestPubertyAge: string;
+  regularPrayerAge: string;
+  menstruationDays: string;
+  onLatestPubertyAgeChange: (value: string) => void;
+  onRegularPrayerAgeChange: (value: string) => void;
+  onMenstruationDaysChange: (value: string) => void;
+  estimate: OnboardingSetup | null;
+}) {
+  const copy = COPY[language];
+
+  return (
+    <>
+      <SetupField
+        label={copy.latestPubertyAge}
+        hint={copy.latestPubertyHint}
+        value={latestPubertyAge}
+        onChangeText={onLatestPubertyAgeChange}
+        placeholder="15"
+        language={language}
+      />
+      <SetupField
+        label={copy.regularPrayerAge}
+        hint={copy.regularPrayerHint}
+        value={regularPrayerAge}
+        onChangeText={onRegularPrayerAgeChange}
+        placeholder="18"
+        language={language}
+      />
+      <SetupField
+        label={copy.menstruationDays}
+        hint={copy.menstruationHint}
+        value={menstruationDays}
+        onChangeText={onMenstruationDaysChange}
+        placeholder="0"
+        language={language}
+      />
+
+      {estimate?.missedDays !== undefined ? (
+        <View style={styles.estimateResult}>
+          <Text style={[styles.estimateResultTitle, isArabic(language) && styles.alignRight]}>
+            {copy.estimateBacklog}: {estimate.missedDays}
+          </Text>
+          <Text style={[styles.estimateResultBody, isArabic(language) && styles.alignRight]}>
+            {copy.estimateBacklogBody}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.trustCard}>
+        <Text style={[styles.trustCardTitle, isArabic(language) && styles.alignRight]}>
+          {copy.onboardingTrustTitle}
+        </Text>
+        <Text style={[styles.trustCardBody, isArabic(language) && styles.alignRight]}>
+          {copy.onboardingTrustBody}
+        </Text>
+        {[copy.onboardingAssumption1, copy.onboardingAssumption2, copy.onboardingAssumption3].map(
+          (assumption) => (
+            <View key={assumption} style={styles.trustBulletRow}>
+              <View style={styles.trustBullet} />
+              <Text style={[styles.trustBulletText, isArabic(language) && styles.alignRight]}>
+                {assumption}
+              </Text>
+            </View>
+          )
+        )}
+        <Text style={[styles.trustCardNote, isArabic(language) && styles.alignRight]}>
+          {copy.onboardingEditableNote}
+        </Text>
+        <View style={styles.trustLinks}>
+          {ONBOARDING_SOURCES[language].map((item) => (
+            <Pressable
+              key={item.url}
+              onPress={() => Linking.openURL(item.url)}
+              style={styles.sourceChip}
+            >
+              <Text style={styles.sourceChipText}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    </>
+  );
+}
+
 function MainApp({
   state,
   setState,
@@ -980,6 +1588,22 @@ function MainApp({
   undoQadaaDay,
   resetToday,
   onLanguageChange,
+  authConfigured,
+  accountProfile,
+  authLoading,
+  authBusyProvider,
+  authError,
+  onGoogleSignIn,
+  onFacebookSignIn,
+  onSignOut,
+  notificationEnabled,
+  notificationHour,
+  notificationMinute,
+  onEnableDailyReminder,
+  onDisableDailyReminder,
+  onNotificationTimeChange,
+  onUpdateTarget,
+  onDefaultDailyAddDaysChange,
   handleShareProgress,
   handleExport,
   handleImport,
@@ -994,6 +1618,22 @@ function MainApp({
   undoQadaaDay: () => void;
   resetToday: () => void;
   onLanguageChange: (language: AppLanguage) => void;
+  authConfigured: boolean;
+  accountProfile: AccountProfile;
+  authLoading: boolean;
+  authBusyProvider: 'google' | 'facebook' | null;
+  authError: string | null;
+  onGoogleSignIn: () => void;
+  onFacebookSignIn: () => void;
+  onSignOut: () => void;
+  notificationEnabled: boolean;
+  notificationHour: number;
+  notificationMinute: number;
+  onEnableDailyReminder: () => void;
+  onDisableDailyReminder: () => void;
+  onNotificationTimeChange: (hour: number, minute: number) => Promise<void>;
+  onUpdateTarget: (setup: OnboardingSetup) => void;
+  onDefaultDailyAddDaysChange: (defaultDailyAddDays: number) => void;
   handleShareProgress: () => void;
   handleExport: () => void;
   handleImport: () => void;
@@ -1002,6 +1642,14 @@ function MainApp({
   const [showPrayerRows, setShowPrayerRows] = useState(false);
   const copy = COPY[state.language];
   const hadith = DAILY_HADITH[state.language];
+  const fastingRemainingDays = remainingFastingDays(
+    state.fastingTargetDays,
+    state.fastingCompletedDays
+  );
+  const fastingProgress = state.fastingTargetDays
+    ? Math.min(state.fastingCompletedDays / state.fastingTargetDays, 1)
+    : 0;
+  const fastingHistory = useMemo(() => getRecentFastingActivity(state.fastingLog, 30), [state.fastingLog]);
   const recentConsistency = useMemo(() => {
     const lastSevenDays = dailyHistory.slice(-7);
     const activeDays = lastSevenDays.filter((day) => day.totalCount > 0).length;
@@ -1013,8 +1661,16 @@ function MainApp({
   }, [dailyHistory]);
   const progress = useMemo(() => {
     const percent = totals.target > 0 ? Math.min(totals.completed / totals.target, 1) : 0;
-    const estimatedDaysLeft = estimateCompletionDays(totals.remaining, state.log);
-    const finishDate = estimateCompletionDate(totals.remaining, state.log);
+    const estimatedDaysLeft = estimateCompletionDays(
+      totals.remaining,
+      state.log,
+      state.defaultDailyAddDays
+    );
+    const finishDate = estimateCompletionDate(
+      totals.remaining,
+      state.log,
+      state.defaultDailyAddDays
+    );
 
     return {
       percent,
@@ -1025,7 +1681,21 @@ function MainApp({
         estimatedDaysLeft === null ? null : estimatedDaysLeft,
       finishDate,
     };
-  }, [state.log, totals]);
+  }, [state.defaultDailyAddDays, state.log, totals]);
+
+  useEffect(() => {
+    if (!state.fastingEnabled && activeTab === 'fasting') {
+      setActiveTab('home');
+    }
+  }, [activeTab, state.fastingEnabled]);
+
+  const completeFastingDay = () => {
+    setState((current) => applyFastingCompletion(current));
+  };
+
+  const undoFastingDay = () => {
+    setState((current) => rollbackFastingCompletion(current));
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
@@ -1148,6 +1818,21 @@ function MainApp({
             <HistoryTab copy={copy} language={state.language} dailyHistory={dailyHistory} />
           ) : null}
 
+          {activeTab === 'fasting' && state.fastingEnabled ? (
+            <FastingTab
+              copy={copy}
+              language={state.language}
+              targetDays={state.fastingTargetDays}
+              completedDays={state.fastingCompletedDays}
+              remainingDays={fastingRemainingDays}
+              progress={fastingProgress}
+              history={fastingHistory}
+              kafarahDays={state.fastingKafarahDays}
+              onAddDay={completeFastingDay}
+              onUndoDay={undoFastingDay}
+            />
+          ) : null}
+
           {activeTab === 'answers' ? (
             <AnswersTab copy={copy} language={state.language} />
           ) : null}
@@ -1157,6 +1842,36 @@ function MainApp({
               copy={copy}
               language={state.language}
               onLanguageChange={onLanguageChange}
+              notificationEnabled={notificationEnabled}
+              notificationHour={notificationHour}
+              notificationMinute={notificationMinute}
+              onEnableDailyReminder={onEnableDailyReminder}
+              onDisableDailyReminder={onDisableDailyReminder}
+              target={state.target}
+              onUpdateTarget={onUpdateTarget}
+              defaultDailyAddDays={state.defaultDailyAddDays}
+              onDefaultDailyAddDaysChange={onDefaultDailyAddDaysChange}
+              fastingEnabled={state.fastingEnabled}
+              fastingTargetDays={state.fastingTargetDays}
+              fastingCompletedDays={state.fastingCompletedDays}
+              fastingKafarahDays={state.fastingKafarahDays}
+              onFastingEnabledChange={(fastingEnabled) =>
+                setState((current) => ({ ...current, fastingEnabled }))
+              }
+              onFastingTargetDaysChange={(fastingTargetDays) =>
+                setState((current) => ({ ...current, fastingTargetDays }))
+              }
+              onFastingKafarahDaysChange={(fastingKafarahDays) =>
+                setState((current) => ({ ...current, fastingKafarahDays }))
+              }
+              authConfigured={authConfigured}
+              accountProfile={accountProfile}
+              authLoading={authLoading}
+              authBusyProvider={authBusyProvider}
+              authError={authError}
+              onGoogleSignIn={onGoogleSignIn}
+              onFacebookSignIn={onFacebookSignIn}
+              onSignOut={onSignOut}
               accountabilityPartnerName={state.accountabilityPartnerName}
               onAccountabilityPartnerNameChange={(accountabilityPartnerName) =>
                 setState((current) => ({ ...current, accountabilityPartnerName }))
@@ -1170,7 +1885,12 @@ function MainApp({
           ) : null}
         </ScrollView>
 
-        <TabBar activeTab={activeTab} onChange={setActiveTab} copy={copy} />
+        <TabBar
+          activeTab={activeTab}
+          onChange={setActiveTab}
+          copy={copy}
+          fastingEnabled={state.fastingEnabled}
+        />
       </View>
     </SafeAreaView>
   );
@@ -1300,6 +2020,144 @@ function HistoryTab({
   );
 }
 
+function FastingTab({
+  copy,
+  language,
+  targetDays,
+  completedDays,
+  remainingDays,
+  progress,
+  history,
+  kafarahDays,
+  onAddDay,
+  onUndoDay,
+}: {
+  copy: CopyBlock;
+  language: AppLanguage;
+  targetDays: number;
+  completedDays: number;
+  remainingDays: number;
+  progress: number;
+  history: FastingDailySummary[];
+  kafarahDays: number;
+  onAddDay: () => void;
+  onUndoDay: () => void;
+}) {
+  const activeHistory = history.filter((day) => day.totalCount > 0);
+  const poorPeopleCount = calculateKafarahPoorPeople(kafarahDays);
+
+  return (
+    <>
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
+          {copy.fastingTitle}
+        </Text>
+        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+          {copy.fastingHint}
+        </Text>
+        <View style={styles.progressCard}>
+          <View style={styles.progressHeader}>
+            <Text style={[styles.progressTitle, isArabic(language) && styles.alignRight]}>
+              {remainingDays} {copy.fastingRemaining}
+            </Text>
+            <Text style={styles.progressPercent}>{Math.round(progress * 100)}%</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+          </View>
+          <View style={styles.progressMiniStatsRow}>
+            <View style={styles.progressMiniStat}>
+              <Text style={styles.progressMiniLabel}>{copy.fastingCompleted}</Text>
+              <Text style={[styles.progressMiniValue, { color: COLORS.success }]}>
+                {completedDays}
+              </Text>
+            </View>
+            <View style={styles.progressMiniStat}>
+              <Text style={styles.progressMiniLabel}>{copy.fastingTarget}</Text>
+              <Text style={[styles.progressMiniValue, { color: COLORS.lightGold }]}>
+                {targetDays}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.dayActionCard}>
+          <View style={styles.dayActionInfo}>
+            <Text style={[styles.dayActionTitle, isArabic(language) && styles.alignRight]}>
+              {copy.fastingTitle}
+            </Text>
+            <Text style={[styles.dayActionMeta, isArabic(language) && styles.alignRight]}>
+              {copy.fastingHint}
+            </Text>
+          </View>
+          <View style={styles.dayActionButtons}>
+            <Pressable onPress={onAddDay} style={styles.fullDayButton}>
+              <Text style={styles.fullDayButtonText}>{copy.fastingAddDay}</Text>
+            </Pressable>
+            <Pressable onPress={onUndoDay} style={styles.dayActionSecondaryButton}>
+              <Text style={styles.minusButtonText}>{copy.fastingUndoDay}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
+          {copy.fastingHistoryTitle}
+        </Text>
+        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+          {copy.fastingHistoryHint}
+        </Text>
+        {activeHistory.length === 0 ? (
+          <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+            {copy.fastingEmpty}
+          </Text>
+        ) : (
+          activeHistory.map((entry) => (
+            <View key={entry.dayKey} style={styles.fastingLogCard}>
+              <Text style={[styles.fastingLogDate, isArabic(language) && styles.alignRight]}>
+                {new Date(`${entry.dayKey}T12:00:00`).toLocaleDateString(language === 'ar' ? 'ar' : 'en', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </Text>
+              <Text style={[styles.fastingLogCount, isArabic(language) && styles.alignRight]}>
+                {entry.totalCount} {copy.dayUnit}
+              </Text>
+            </View>
+          ))
+        )}
+
+        {kafarahDays > 0 ? (
+          <View style={styles.kafarahAdvancedCard}>
+            <Text style={[styles.kafarahAdvancedLabel, isArabic(language) && styles.alignRight]}>
+              {copy.kafarahAdvancedLabel}
+            </Text>
+            <Text style={[styles.kafarahAdvancedTitle, isArabic(language) && styles.alignRight]}>
+              {copy.kafarahTitle}
+            </Text>
+            <Text style={[styles.kafarahAdvancedBody, isArabic(language) && styles.alignRight]}>
+              {copy.kafarahHint}
+            </Text>
+            <ProgressStat label={copy.kafarahEligibleDaysLabel} value={`${kafarahDays}`} />
+            <ProgressStat label={copy.kafarahPoorPeopleLabel} value={`${poorPeopleCount}`} />
+            <Text style={[styles.kafarahAdvancedBody, isArabic(language) && styles.alignRight]}>
+              {copy.kafarahFastingLabel}
+            </Text>
+            <Text style={[styles.kafarahAdvancedNote, isArabic(language) && styles.alignRight]}>
+              {copy.kafarahWarning}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </>
+  );
+}
+
 function CalendarCell({
   day,
   selected,
@@ -1370,11 +2228,27 @@ function AnswersTab({
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>{copy.qnaTitle}</Text>
       <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>{copy.qnaHint}</Text>
+      <View style={styles.qaTrustCard}>
+        <Text style={[styles.trustCardTitle, isArabic(language) && styles.alignRight]}>
+          {copy.qnaTrustTitle}
+        </Text>
+        <Text style={[styles.trustCardBody, isArabic(language) && styles.alignRight]}>
+          {copy.qnaTrustBody}
+        </Text>
+      </View>
       {TRUSTED_QA[language].map((item) => (
         <View key={item.url} style={styles.qaCard}>
+          <View style={styles.qaCategoryChip}>
+            <Text style={styles.qaCategoryChipText}>
+              {copy.qnaCategoryLabel}: {item.category}
+            </Text>
+          </View>
           <Text style={[styles.qaTitle, isArabic(language) && styles.alignRight]}>{item.title}</Text>
           <Text style={[styles.qaMeta, isArabic(language) && styles.alignRight]}>
-            {item.scholar} · {item.source}
+            {copy.qnaScholarLabel}: {item.scholar}
+          </Text>
+          <Text style={[styles.qaMeta, isArabic(language) && styles.alignRight]}>
+            {copy.qnaSourceLabel}: {item.source}
           </Text>
           <Text style={[styles.qaBody, isArabic(language) && styles.alignRight]}>{item.summary}</Text>
           <Pressable onPress={() => Linking.openURL(item.url)} style={styles.qaButton}>
@@ -1390,6 +2264,23 @@ function MoreTab({
   copy,
   language,
   onLanguageChange,
+  notificationEnabled,
+  notificationHour,
+  notificationMinute,
+  onEnableDailyReminder,
+  onDisableDailyReminder,
+  onNotificationTimeChange,
+  target,
+  onUpdateTarget,
+  defaultDailyAddDays,
+  onDefaultDailyAddDaysChange,
+  fastingEnabled,
+  fastingTargetDays,
+  fastingCompletedDays,
+  fastingKafarahDays,
+  onFastingEnabledChange,
+  onFastingTargetDaysChange,
+  onFastingKafarahDaysChange,
   authConfigured,
   accountProfile,
   authLoading,
@@ -1409,6 +2300,23 @@ function MoreTab({
   copy: CopyBlock;
   language: AppLanguage;
   onLanguageChange: (language: AppLanguage) => void;
+  notificationEnabled: boolean;
+  notificationHour: number;
+  notificationMinute: number;
+  onEnableDailyReminder: () => void;
+  onDisableDailyReminder: () => void;
+  onNotificationTimeChange: (hour: number, minute: number) => Promise<void>;
+  target: PrayerCounts;
+  onUpdateTarget: (setup: OnboardingSetup) => void;
+  defaultDailyAddDays: number;
+  onDefaultDailyAddDaysChange: (defaultDailyAddDays: number) => void;
+  fastingEnabled: boolean;
+  fastingTargetDays: number;
+  fastingCompletedDays: number;
+  fastingKafarahDays: number;
+  onFastingEnabledChange: (enabled: boolean) => void;
+  onFastingTargetDaysChange: (days: number) => void;
+  onFastingKafarahDaysChange: (days: number) => void;
   authConfigured: boolean;
   accountProfile: AccountProfile;
   authLoading: boolean;
@@ -1425,8 +2333,152 @@ function MoreTab({
   handleExport: () => void;
   handleImport: () => void;
 }) {
+  const formattedReminderTime = formatReminderTime(notificationHour, notificationMinute, language);
+  const [manualNotificationHour, setManualNotificationHour] = useState(String(notificationHour));
+  const [manualNotificationMinute, setManualNotificationMinute] = useState(
+    String(notificationMinute).padStart(2, '0')
+  );
+  const [manualTargetDays, setManualTargetDays] = useState(
+    String(Math.round(totalCounts(target) / PRAYERS_PER_QADAA_DAY))
+  );
+  const [manualDefaultAddDays, setManualDefaultAddDays] = useState(String(defaultDailyAddDays));
+  const [manualFastingTargetDays, setManualFastingTargetDays] = useState(String(fastingTargetDays));
+  const [manualFastingKafarahDays, setManualFastingKafarahDays] = useState(String(fastingKafarahDays));
+  const [showTargetModal, setShowTargetModal] = useState(false);
+  const [latestPubertyAge, setLatestPubertyAge] = useState('15');
+  const [regularPrayerAge, setRegularPrayerAge] = useState('');
+  const [menstruationDays, setMenstruationDays] = useState('0');
+  const estimate = useMemo(
+    () =>
+      buildShafiiEstimate({
+        language,
+        latestPubertyAge,
+        regularPrayerAge,
+        menstruationDays,
+      }),
+    [language, latestPubertyAge, regularPrayerAge, menstruationDays]
+  );
+  const currentTargetDays = Math.round(totalCounts(target) / PRAYERS_PER_QADAA_DAY);
+
+  useEffect(() => {
+    setManualTargetDays(String(currentTargetDays));
+  }, [currentTargetDays]);
+
+  useEffect(() => {
+    setManualNotificationHour(String(notificationHour));
+    setManualNotificationMinute(String(notificationMinute).padStart(2, '0'));
+  }, [notificationHour, notificationMinute]);
+
+  useEffect(() => {
+    setManualDefaultAddDays(String(defaultDailyAddDays));
+  }, [defaultDailyAddDays]);
+
+  useEffect(() => {
+    setManualFastingTargetDays(String(fastingTargetDays));
+  }, [fastingTargetDays]);
+
+  useEffect(() => {
+    setManualFastingKafarahDays(String(fastingKafarahDays));
+  }, [fastingKafarahDays]);
+
+  const handleSaveManualTarget = () => {
+    const parsedDays = Number(manualTargetDays);
+    if (Number.isNaN(parsedDays) || manualTargetDays.trim() === '') return;
+
+    onUpdateTarget({
+      missedDays: Math.max(0, Math.round(parsedDays)),
+      target: countsFromMissedDays(Math.max(0, Math.round(parsedDays))),
+      notes:
+        language === 'ar'
+          ? `تعديل يدوي لهدف القضاء: ${Math.max(0, Math.round(parsedDays))} يوم.`
+          : `Manual qadaa target update: ${Math.max(0, Math.round(parsedDays))} days.`,
+    });
+  };
+
+  const handleSaveEstimateTarget = () => {
+    if (!estimate) return;
+    onUpdateTarget(estimate);
+    setShowTargetModal(false);
+  };
+
+  const handleSaveDefaultAddDays = () => {
+    const parsedDays = Number(manualDefaultAddDays);
+    if (Number.isNaN(parsedDays) || manualDefaultAddDays.trim() === '') return;
+    const nextDays = Math.max(1, Math.round(parsedDays));
+    onDefaultDailyAddDaysChange(nextDays);
+  };
+
+  const handleSaveReminderTime = async () => {
+    const parsedHour = Number(manualNotificationHour);
+    const parsedMinute = Number(manualNotificationMinute);
+
+    if (
+      !Number.isInteger(parsedHour) ||
+      !Number.isInteger(parsedMinute) ||
+      parsedHour < 0 ||
+      parsedHour > 23 ||
+      parsedMinute < 0 ||
+      parsedMinute > 59
+    ) {
+      Alert.alert(copy.notificationTitle, copy.notificationTimeInvalid);
+      return;
+    }
+
+    await onNotificationTimeChange(parsedHour, parsedMinute);
+  };
+
+  const handleSaveFastingTarget = () => {
+    const parsedDays = Number(manualFastingTargetDays);
+    if (Number.isNaN(parsedDays) || manualFastingTargetDays.trim() === '') return;
+    onFastingTargetDaysChange(Math.max(0, Math.round(parsedDays)));
+  };
+
+  const handleSaveFastingKafarahDays = () => {
+    const parsedDays = Number(manualFastingKafarahDays);
+    if (Number.isNaN(parsedDays) || manualFastingKafarahDays.trim() === '') return;
+    onFastingKafarahDaysChange(Math.max(0, Math.round(parsedDays)));
+  };
+
   return (
     <>
+      <Modal animationType="slide" transparent visible={showTargetModal} onRequestClose={() => setShowTargetModal(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={[styles.modalTitle, isArabic(language) && styles.alignRight]}>
+              {copy.recalculateTitle}
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
+              <View style={styles.setupCard}>
+                <Text style={[styles.setupTitle, isArabic(language) && styles.alignRight]}>
+                  {copy.onboardingEstimateTitle}
+                </Text>
+                <Text style={[styles.setupBody, isArabic(language) && styles.alignRight]}>
+                  {copy.onboardingEstimateBody}
+                </Text>
+                <ShafiiEstimateFields
+                  language={language}
+                  latestPubertyAge={latestPubertyAge}
+                  regularPrayerAge={regularPrayerAge}
+                  menstruationDays={menstruationDays}
+                  onLatestPubertyAgeChange={setLatestPubertyAge}
+                  onRegularPrayerAgeChange={setRegularPrayerAge}
+                  onMenstruationDaysChange={setMenstruationDays}
+                  estimate={estimate}
+                />
+              </View>
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <Pressable onPress={handleSaveEstimateTarget} style={styles.onboardingButton}>
+                <Text style={styles.onboardingButtonText}>{copy.saveEstimateChanges}</Text>
+              </Pressable>
+              <Pressable onPress={() => setShowTargetModal(false)} style={styles.ghostButton}>
+                <Text style={styles.ghostButtonText}>{copy.cancel}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
           {copy.accountTitle}
@@ -1532,6 +2584,216 @@ function MoreTab({
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
+          {copy.targetSettingsTitle}
+        </Text>
+        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+          {copy.targetSettingsHint}
+        </Text>
+        <View style={styles.partnerCard}>
+          <View style={styles.notificationStatusRow}>
+            <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+              {copy.currentTargetLabel}
+            </Text>
+            <Text style={styles.notificationTimeValue}>
+              {currentTargetDays} {copy.currentTargetDaysLabel}
+            </Text>
+          </View>
+          <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+            {copy.manualDaysLabel}
+          </Text>
+          <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+            {copy.manualDaysHint}
+          </Text>
+          <TextInput
+            value={manualTargetDays}
+            onChangeText={(next) => setManualTargetDays(next.replace(/[^0-9.]/g, ''))}
+            style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
+            keyboardType="number-pad"
+            placeholder="0"
+            placeholderTextColor={COLORS.mutedText}
+          />
+          <Pressable onPress={handleSaveManualTarget} style={styles.shareButton}>
+            <Text style={styles.shareButtonText}>{copy.saveTarget}</Text>
+          </Pressable>
+          <Pressable onPress={() => setShowTargetModal(true)} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonText}>{copy.recalculateTarget}</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
+          {copy.notificationTitle}
+        </Text>
+        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+          {copy.notificationHint}
+        </Text>
+        <View style={styles.partnerCard}>
+          <View style={styles.notificationStatusRow}>
+            <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+              {copy.notificationStatusLabel}
+            </Text>
+            <Text style={styles.notificationStatusValue}>
+              {notificationEnabled ? copy.notificationStatusOn : copy.notificationStatusOff}
+            </Text>
+          </View>
+          <View style={styles.notificationStatusRow}>
+            <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+              {copy.notificationTimeLabel}
+            </Text>
+            <Text style={styles.notificationTimeValue}>{formattedReminderTime}</Text>
+          </View>
+          <View style={styles.notificationTimeEditorRow}>
+            <View style={styles.notificationTimeField}>
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.notificationHourLabel}
+              </Text>
+              <TextInput
+                value={manualNotificationHour}
+                onChangeText={(next) => setManualNotificationHour(next.replace(/[^0-9]/g, ''))}
+                style={[
+                  styles.partnerInput,
+                  styles.notificationTimeInput,
+                  isArabic(language) && styles.notesInputArabic,
+                ]}
+                keyboardType="number-pad"
+                placeholder="21"
+                placeholderTextColor={COLORS.mutedText}
+                maxLength={2}
+              />
+            </View>
+            <View style={styles.notificationTimeField}>
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.notificationMinuteLabel}
+              </Text>
+              <TextInput
+                value={manualNotificationMinute}
+                onChangeText={(next) => setManualNotificationMinute(next.replace(/[^0-9]/g, ''))}
+                style={[
+                  styles.partnerInput,
+                  styles.notificationTimeInput,
+                  isArabic(language) && styles.notesInputArabic,
+                ]}
+                keyboardType="number-pad"
+                placeholder="00"
+                placeholderTextColor={COLORS.mutedText}
+                maxLength={2}
+              />
+            </View>
+          </View>
+          <Pressable onPress={handleSaveReminderTime} style={styles.shareButton}>
+            <Text style={styles.shareButtonText}>{copy.notificationSaveTime}</Text>
+          </Pressable>
+          <Pressable
+            onPress={notificationEnabled ? onDisableDailyReminder : onEnableDailyReminder}
+            style={notificationEnabled ? styles.secondaryButton : styles.shareButton}
+          >
+            <Text style={notificationEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
+              {notificationEnabled ? copy.disableNotification : copy.enableNotification}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
+          {copy.defaultAddTitle}
+        </Text>
+        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+          {copy.defaultAddHint}
+        </Text>
+        <View style={styles.partnerCard}>
+          <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+            {copy.defaultAddLabel}
+          </Text>
+          <TextInput
+            value={manualDefaultAddDays}
+            onChangeText={(next) => setManualDefaultAddDays(next.replace(/[^0-9.]/g, ''))}
+            style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
+            keyboardType="number-pad"
+            placeholder="1"
+            placeholderTextColor={COLORS.mutedText}
+          />
+          <Pressable onPress={handleSaveDefaultAddDays} style={styles.shareButton}>
+            <Text style={styles.shareButtonText}>{copy.defaultAddSave}</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
+          {copy.fastingSettingsTitle}
+        </Text>
+        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+          {copy.fastingSettingsHint}
+        </Text>
+        <View style={styles.partnerCard}>
+          <Pressable
+            onPress={() => onFastingEnabledChange(!fastingEnabled)}
+            style={fastingEnabled ? styles.secondaryButton : styles.shareButton}
+          >
+            <Text style={fastingEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
+              {fastingEnabled ? copy.fastingDisable : copy.fastingEnable}
+            </Text>
+          </Pressable>
+          {fastingEnabled ? (
+            <>
+              <View style={styles.notificationStatusRow}>
+                <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.fastingCompleted}
+                </Text>
+                <Text style={styles.notificationTimeValue}>{fastingCompletedDays}</Text>
+              </View>
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.fastingTargetLabel}
+              </Text>
+              <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+                {copy.fastingTargetHint}
+              </Text>
+              <TextInput
+                value={manualFastingTargetDays}
+                onChangeText={(next) => setManualFastingTargetDays(next.replace(/[^0-9.]/g, ''))}
+                style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={COLORS.mutedText}
+              />
+              <Pressable onPress={handleSaveFastingTarget} style={styles.shareButton}>
+                <Text style={styles.shareButtonText}>{copy.fastingSaveTarget}</Text>
+              </Pressable>
+              <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
+                {copy.kafarahTitle}
+              </Text>
+              <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+                {copy.kafarahHint}
+              </Text>
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.kafarahEligibleDaysLabel}
+              </Text>
+              <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+                {copy.kafarahEligibleDaysHint}
+              </Text>
+              <TextInput
+                value={manualFastingKafarahDays}
+                onChangeText={(next) => setManualFastingKafarahDays(next.replace(/[^0-9.]/g, ''))}
+                style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={COLORS.mutedText}
+              />
+              <Pressable onPress={handleSaveFastingKafarahDays} style={styles.shareButton}>
+                <Text style={styles.shareButtonText}>{copy.kafarahSave}</Text>
+              </Pressable>
+              <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+                {copy.kafarahTrackHint}
+              </Text>
+            </>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
           {copy.accountabilityTitle}
         </Text>
         <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
@@ -1564,15 +2826,6 @@ function MoreTab({
           placeholder={copy.notesPlaceholder}
           placeholderTextColor={COLORS.mutedText}
         />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
-          {copy.comingNextTitle}
-        </Text>
-        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-          {copy.comingNextBody}
-        </Text>
       </View>
 
       <View style={styles.backupSection}>
@@ -1712,10 +2965,9 @@ function ProgressStat({ label, value }: { label: string; value: string }) {
 }
 
 function chunkIntoWeeks(days: DailyActivitySummary[]) {
-  const ordered = [...days].reverse();
   const weeks: DailyActivitySummary[][] = [];
-  for (let index = 0; index < ordered.length; index += 7) {
-    weeks.push(ordered.slice(index, index + 7));
+  for (let index = 0; index < days.length; index += 7) {
+    weeks.push(days.slice(index, index + 7));
   }
   return weeks;
 }
@@ -1772,6 +3024,15 @@ function isArabic(language: AppLanguage) {
 function formatDecimal(value: number) {
   if (Number.isInteger(value)) return String(value);
   return value.toFixed(1);
+}
+
+function formatReminderTime(hour: number, minute: number, language: AppLanguage) {
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  return date.toLocaleTimeString(language === 'ar' ? 'ar' : 'en', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 function formatFinishDate(date: Date | null, emptyLabel: string) {
@@ -2251,6 +3512,65 @@ const styles = StyleSheet.create({
     color: COLORS.mutedText,
     fontSize: 13,
     lineHeight: 18,
+  },
+  trustCard: {
+    backgroundColor: 'rgba(10, 42, 30, 0.92)',
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '1a',
+  },
+  trustCardTitle: {
+    color: COLORS.cream,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  trustCardBody: {
+    color: COLORS.mutedText,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  trustBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  trustBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: COLORS.lightGold,
+    marginTop: 6,
+  },
+  trustBulletText: {
+    flex: 1,
+    color: COLORS.cream,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  trustCardNote: {
+    color: COLORS.lightGold,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  trustLinks: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sourceChip: {
+    backgroundColor: 'rgba(247, 243, 234, 0.06)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '22',
+  },
+  sourceChipText: {
+    color: COLORS.cream,
+    fontSize: 12,
+    fontWeight: '700',
   },
   onboardingButtons: {
     gap: 10,
@@ -2814,6 +4134,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#00000099',
     justifyContent: 'flex-end',
   },
+  modalCard: {
+    backgroundColor: 'rgba(13, 43, 32, 0.98)',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    gap: 12,
+    borderTopWidth: 1,
+    borderColor: COLORS.gold + '22',
+    maxHeight: '92%',
+  },
   modalSheet: {
     backgroundColor: 'rgba(13, 43, 32, 0.98)',
     borderTopLeftRadius: 24,
@@ -2827,6 +4157,12 @@ const styles = StyleSheet.create({
     color: COLORS.cream,
     fontSize: 20,
     fontWeight: '800',
+  },
+  modalScrollContent: {
+    paddingBottom: 8,
+  },
+  modalActions: {
+    gap: 10,
   },
   modalDate: {
     color: COLORS.lightGold,
@@ -2875,6 +4211,29 @@ const styles = StyleSheet.create({
     gap: 8,
     overflow: 'hidden',
   },
+  qaTrustCard: {
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 18,
+    padding: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '18',
+    marginBottom: 12,
+  },
+  qaCategoryChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(247, 243, 234, 0.06)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '22',
+  },
+  qaCategoryChipText: {
+    color: COLORS.lightGold,
+    fontSize: 11,
+    fontWeight: '800',
+  },
   qaTitle: {
     color: COLORS.cream,
     fontSize: 16,
@@ -2905,6 +4264,55 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  fastingLogCard: {
+    backgroundColor: COLORS.prayerCardBg,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '14',
+  },
+  fastingLogDate: {
+    color: COLORS.cream,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  fastingLogCount: {
+    color: COLORS.lightGold,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  kafarahAdvancedCard: {
+    marginTop: 14,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 18,
+    padding: 16,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '18',
+  },
+  kafarahAdvancedLabel: {
+    color: COLORS.lightGold,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  kafarahAdvancedTitle: {
+    color: COLORS.cream,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  kafarahAdvancedBody: {
+    color: COLORS.mutedText,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  kafarahAdvancedNote: {
+    color: COLORS.lightGold,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   settingsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2920,6 +4328,34 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     flex: 1,
+  },
+  notificationStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  notificationStatusValue: {
+    color: COLORS.lightGold,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  notificationTimeValue: {
+    color: COLORS.cream,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  notificationTimeEditorRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  notificationTimeField: {
+    flex: 1,
+    gap: 8,
+  },
+  notificationTimeInput: {
+    flex: 0,
+    textAlign: 'center',
   },
   accountCard: {
     backgroundColor: COLORS.inputBg,

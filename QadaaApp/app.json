@@ -8,6 +8,9 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "plugins": [
+      "expo-notifications"
+    ],
     "primaryColor": "#0B3D2E",
     "splash": {
       "image": "./assets/splash-icon.png",
