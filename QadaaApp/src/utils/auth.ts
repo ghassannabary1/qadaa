@@ -46,10 +46,12 @@ export const supabase: SupabaseClient | null = isAuthConfigured
     })
   : null;
 
-const redirectTo = makeRedirectUri({
-  scheme: 'qadaa',
-  path: 'auth/callback',
-});
+const redirectTo =
+  Platform.OS === 'web'
+    ? makeRedirectUri({
+        path: 'auth/callback',
+      })
+    : 'qadaa://auth/callback';
 
 export const createSessionFromUrl = async (url: string) => {
   if (!supabase) return null;

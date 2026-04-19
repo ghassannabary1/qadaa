@@ -1531,6 +1531,9 @@ function OnboardingScreen({
     setProfileEmail((current) => current || accountProfile.email || '');
   }, [accountProfile]);
 
+  const isProfileComplete =
+    profileName.trim() !== '' && profileAge.trim() !== '' && profileEmail.trim() !== '';
+
   const onboardingPayload = (base?: OnboardingSetup): OnboardingSetup => ({
     ...base,
     notes:
@@ -1680,10 +1683,12 @@ function OnboardingScreen({
 
             <View style={styles.onboardingButtons}>
               <Pressable
-                onPress={() => onComplete(onboardingPayload(estimate ?? undefined))}
-                style={styles.onboardingButton}
+                onPress={isProfileComplete ? () => onComplete(onboardingPayload(estimate ?? undefined)) : undefined}
+                style={[styles.onboardingButton, !isProfileComplete && styles.onboardingButtonDisabled]}
               >
-                <Text style={styles.onboardingButtonText}>
+                <Text
+                  style={[styles.onboardingButtonText, !isProfileComplete && styles.onboardingButtonTextDisabled]}
+                >
                   {estimate ? copy.useEstimate : copy.startNow}
                 </Text>
               </Pressable>
@@ -3850,10 +3855,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.lightGold + '66',
   },
+  onboardingButtonDisabled: {
+    backgroundColor: 'rgba(213, 177, 90, 0.35)',
+    borderColor: COLORS.lightGold + '22',
+  },
   onboardingButtonText: {
     color: COLORS.nightBlue,
     fontSize: 17,
     fontWeight: '800',
+  },
+  onboardingButtonTextDisabled: {
+    color: 'rgba(11, 34, 28, 0.65)',
   },
   ghostButton: {
     borderRadius: 14,
