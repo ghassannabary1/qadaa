@@ -48,7 +48,6 @@ export type AppState = {
   includeWitr: boolean;
   notes: string;
   language: AppLanguage;
-  accountabilityPartnerName: string;
   notificationEnabled: boolean;
   notificationHour: number;
   notificationMinute: number;
@@ -103,7 +102,6 @@ export const defaultAppState = (): AppState => ({
   includeWitr: false,
   notes: 'Shafi‘i profile — simple counting first, detailed fiqh options later.',
   language: 'en',
-  accountabilityPartnerName: '',
   notificationEnabled: false,
   notificationHour: 21,
   notificationMinute: 0,

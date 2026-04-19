@@ -56,7 +56,6 @@ describe('qadaa helpers', () => {
     expect(state.profileEmail).toBe('');
     expect(state.notes).toContain('Shafi');
     expect(state.language).toBe('en');
-    expect(state.accountabilityPartnerName).toBe('');
     expect(state.notificationEnabled).toBe(false);
     expect(state.notificationHour).toBe(21);
     expect(state.notificationMinute).toBe(0);

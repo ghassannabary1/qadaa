@@ -10,6 +10,7 @@ import {
   ImageBackground,
   Linking,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   Share,
@@ -77,6 +78,7 @@ import { DividerOrnament } from './src/ui/patterns/DividerOrnament';
 
 const STORAGE_KEY = 'qadaa-simple-v2';
 const ONBOARD_KEY = 'qadaa-onboarded-v1';
+const HADITH_ROTATION_KEY = 'qadaa-daily-hadith-index-v1';
 const AUTO_BACKUP_INTERVAL = 30 * 1000;
 const DEFAULT_NOTES = defaultAppState().notes;
 const APP_BACKGROUND = require('./assets/patterns/backgrounds/app-islamic-floral-background.png');
@@ -89,6 +91,8 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const COLORS = {
   darkGreen: '#0B3D2E',
@@ -149,6 +153,7 @@ type CopyBlock = {
   profileAgeHint: string;
   profileEmailLabel: string;
   profilePrefillHint: string;
+  profileEmailInvalid: string;
   prefillFromGoogle: string;
   prefillFromFacebook: string;
   onboardingEstimateTitle: string;
@@ -260,11 +265,6 @@ type CopyBlock = {
   enableNotification: string;
   disableNotification: string;
   notificationPermissionDenied: string;
-  accountabilityTitle: string;
-  accountabilityHint: string;
-  partnerNameLabel: string;
-  partnerNamePlaceholder: string;
-  shareProgress: string;
   notesTitle: string;
   notesPlaceholder: string;
   comingNextTitle: string;
@@ -340,6 +340,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     profileAgeHint: 'Optional, but useful for personal setup context.',
     profileEmailLabel: 'Email',
     profilePrefillHint: 'Google or Facebook can fill your name and email. Age still needs to be entered by you.',
+    profileEmailInvalid: 'Enter a valid email address.',
     prefillFromGoogle: 'Fill from Google',
     prefillFromFacebook: 'Fill from Facebook',
     onboardingEstimateTitle: "First-time Shafi'i estimate",
@@ -462,11 +463,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     disableNotification: 'Turn off reminder',
     notificationPermissionDenied:
       'Notifications are off for Qadaa. Please allow notifications in the system prompt or device settings.',
-    accountabilityTitle: 'Accountability partner',
-    accountabilityHint: 'Keep this private and encouraging. Share only today’s progress with one trusted friend.',
-    partnerNameLabel: 'Partner name',
-    partnerNamePlaceholder: 'Trusted friend',
-    shareProgress: 'Share today\'s progress',
     notesTitle: 'Notes',
     notesPlaceholder: 'How are you counting your qadaa?',
     comingNextTitle: 'Coming next',
@@ -545,6 +541,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     profileAgeHint: 'اختياري، لكنه يفيد في ضبط البداية بشكل شخصي.',
     profileEmailLabel: 'البريد الإلكتروني',
     profilePrefillHint: 'يمكن لجوجل أو فيسبوك تعبئة الاسم والبريد، أما العمر فيبقى لإدخالك أنت.',
+    profileEmailInvalid: 'أدخل بريدًا إلكترونيًا صحيحًا.',
     prefillFromGoogle: 'تعبئة من جوجل',
     prefillFromFacebook: 'تعبئة من فيسبوك',
     onboardingEstimateTitle: 'تقدير أولي على المذهب الشافعي',
@@ -667,11 +664,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     disableNotification: 'إيقاف التذكير',
     notificationPermissionDenied:
       'تنبيهات Qadaa غير مفعّلة. اسمح بالتنبيهات من نافذة النظام أو من إعدادات الجهاز.',
-    accountabilityTitle: 'شريك المتابعة',
-    accountabilityHint: 'اجعلها مشاركة خاصة ومشجعة، وشارك إنجاز اليوم فقط مع شخص تثق به.',
-    partnerNameLabel: 'اسم الشريك',
-    partnerNamePlaceholder: 'صديق موثوق',
-    shareProgress: 'مشاركة تقدّم اليوم',
     notesTitle: 'ملاحظات',
     notesPlaceholder: 'كيف تنظم قضاءك؟',
     comingNextTitle: 'لاحقاً',
@@ -733,17 +725,91 @@ const COPY: Record<AppLanguage, CopyBlock> = {
   },
 };
 
-const DAILY_HADITH = {
-  en: {
-    text: 'The best deed is the prayer at its proper time.',
-    source: 'Sunnah.com search result citing Sahih Muslim, Book 2 Hadith 23',
-    url: 'https://sunnah.com/search?q=best+of+deeds',
-  },
-  ar: {
-    text: 'أفضل الأعمال الصلاة لوقتها.',
-    source: 'مستفاد من نتائج Sunnah.com في صحيح مسلم، كتاب ٢ حديث ٢٣',
-    url: 'https://sunnah.com/search?q=best+of+deeds',
-  },
+const DAILY_HADITH: Record<AppLanguage, Array<{ text: string; collection: string; url: string }>> = {
+  en: [
+    {
+      text: 'Prayer at its proper time.',
+      collection: 'Sahih Muslim',
+      url: 'https://sunnah.com/search?didyoumean=true&old=actions+intention&page=6&q=action+intention',
+    },
+    {
+      text: 'The two rak‘ahs before Fajr are better than the world and all it contains.',
+      collection: 'Sahih Muslim',
+      url: 'https://sunnah.com/search?q=%D8%A7%D9%84%D9%81%D8%AC%D8%B1',
+    },
+    {
+      text: 'Whoever prays the two cool prayers will enter Paradise.',
+      collection: 'Sahih al-Bukhari',
+      url: 'https://sunnah.com/search?didyoumean=true&old=banu+qurayza+asr&page=2&q=banu+quraiza+asr',
+    },
+    {
+      text: 'The prayer is light.',
+      collection: 'Sahih Muslim',
+      url: 'https://sunnah.com/search?didyoumean=true&old=Sahih+Bukhari+1322&page=1&q=sahih+bukhari+1+322',
+    },
+    {
+      text: 'The closest a servant is to his Lord is while he is prostrating, so increase your supplication.',
+      collection: 'Sahih Muslim',
+      url: 'https://sunnah.com/muslim:482',
+    },
+    {
+      text: 'Whoever catches one rak‘ah of the prayer has caught the prayer.',
+      collection: 'Sahih Muslim',
+      url: 'https://sunnah.com/search?page=4&q=Salat+',
+    },
+    {
+      text: 'When one of you enters the mosque, let him pray two rak‘ahs before sitting.',
+      collection: 'Sahih al-Bukhari',
+      url: 'https://sunnah.com/search?didyoumean=true&old=matn+sitting&page=3&q=main+sitting',
+    },
+    {
+      text: 'The time of Fajr lasts until the sun rises.',
+      collection: 'Sahih Muslim',
+      url: 'https://sunnah.com/muslim:612b',
+    },
+  ],
+  ar: [
+    {
+      text: 'الصَّلَاةُ لِوَقْتِهَا',
+      collection: 'صحيح مسلم',
+      url: 'https://sunnah.com/search?didyoumean=true&old=actions+intention&page=6&q=action+intention',
+    },
+    {
+      text: 'رَكْعَتَا الْفَجْرِ خَيْرٌ مِنَ الدُّنْيَا وَمَا فِيهَا',
+      collection: 'صحيح مسلم',
+      url: 'https://sunnah.com/search?q=%D8%A7%D9%84%D9%81%D8%AC%D8%B1',
+    },
+    {
+      text: 'مَنْ صَلَّى الْبَرْدَيْنِ دَخَلَ الْجَنَّةَ',
+      collection: 'صحيح البخاري',
+      url: 'https://sunnah.com/search?didyoumean=true&old=banu+qurayza+asr&page=2&q=banu+quraiza+asr',
+    },
+    {
+      text: 'الصَّلَاةُ نُورٌ',
+      collection: 'صحيح مسلم',
+      url: 'https://sunnah.com/search?didyoumean=true&old=Sahih+Bukhari+1322&page=1&q=sahih+bukhari+1+322',
+    },
+    {
+      text: 'أَقْرَبُ مَا يَكُونُ الْعَبْدُ مِنْ رَبِّهِ وَهُوَ سَاجِدٌ، فَأَكْثِرُوا الدُّعَاءَ',
+      collection: 'صحيح مسلم',
+      url: 'https://sunnah.com/muslim:482',
+    },
+    {
+      text: 'مَنْ أَدْرَكَ رَكْعَةً مِنَ الصَّلَاةِ فَقَدْ أَدْرَكَ الصَّلَاةَ',
+      collection: 'صحيح مسلم',
+      url: 'https://sunnah.com/search?page=4&q=Salat+',
+    },
+    {
+      text: 'إِذَا دَخَلَ أَحَدُكُمُ الْمَسْجِدَ فَلْيَرْكَعْ رَكْعَتَيْنِ قَبْلَ أَنْ يَجْلِسَ',
+      collection: 'صحيح البخاري',
+      url: 'https://sunnah.com/search?didyoumean=true&old=matn+sitting&page=3&q=main+sitting',
+    },
+    {
+      text: 'وَقْتُ الْفَجْرِ مَا لَمْ تَطْلُعِ الشَّمْسُ',
+      collection: 'صحيح مسلم',
+      url: 'https://sunnah.com/muslim:612b',
+    },
+  ],
 };
 
 type TrustedQaItem = {
@@ -939,6 +1005,7 @@ export default function App() {
   const [state, setState] = useState<AppState>(defaultAppState());
   const [loaded, setLoaded] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [hadithIndex, setHadithIndex] = useState(0);
   const [authSession, setAuthSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(isAuthConfigured);
   const [authBusyProvider, setAuthBusyProvider] = useState<'google' | 'facebook' | null>(null);
@@ -949,11 +1016,20 @@ export default function App() {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         const onboarded = await AsyncStorage.getItem(ONBOARD_KEY);
+        const storedHadithIndex = await AsyncStorage.getItem(HADITH_ROTATION_KEY);
         const backupAge = await getBackupAge();
+        const hadithCount = DAILY_HADITH.en.length;
+        const previousHadithIndex = storedHadithIndex ? Number(storedHadithIndex) : -1;
+        const nextHadithIndex =
+          Number.isInteger(previousHadithIndex) && previousHadithIndex >= 0
+            ? (previousHadithIndex + 1) % hadithCount
+            : 0;
 
         if (raw) {
           setState(hydrateState(JSON.parse(raw) as Partial<AppState>));
         }
+        setHadithIndex(nextHadithIndex);
+        await AsyncStorage.setItem(HADITH_ROTATION_KEY, String(nextHadithIndex));
         if (!onboarded) {
           setShowOnboarding(true);
         }
@@ -1308,24 +1384,6 @@ export default function App() {
     }));
   }, []);
 
-  const handleShareProgress = useCallback(async () => {
-    const copy = COPY[state.language];
-    const partner = state.accountabilityPartnerName.trim();
-    const partnerLine = partner
-      ? state.language === 'ar'
-        ? `إلى ${partner}`
-        : `To ${partner}`
-      : state.language === 'ar'
-        ? 'مع شريك محاسبة موثوق'
-        : 'With a trusted accountability partner';
-    const message =
-      state.language === 'ar'
-        ? `${partnerLine}\nأنجزت اليوم ${totals.today} صلاة قضاء.\nإجمالي المنجز: ${totals.completed}.\nالمتبقي: ${totals.remaining}.\nدعواتك لي بالثبات.`
-        : `${partnerLine}\nI counted ${totals.today} qadaa prayers today.\nTotal finished: ${totals.completed}.\nPrayers left: ${totals.remaining}.\nPlease make du'a for consistency.`;
-
-    await Share.share({ message, title: copy.accountabilityTitle });
-  }, [state.language, state.accountabilityPartnerName, totals, ]);
-
   const handleProviderSignIn = useCallback(
     async (provider: 'google' | 'facebook') => {
       if (authBusyProvider) return;
@@ -1392,10 +1450,10 @@ export default function App() {
             completeQadaaDay={completeQadaaDay}
             undoQadaaDay={undoQadaaDay}
             resetToday={resetToday}
+            hadithIndex={hadithIndex}
             onLanguageChange={updateLanguage}
             handleExport={handleExport}
             handleImport={handleImport}
-            handleShareProgress={handleShareProgress}
             authConfigured={isAuthConfigured}
             accountProfile={accountProfile}
             authLoading={authLoading}
@@ -1507,7 +1565,6 @@ function OnboardingScreen({
   onComplete: (setup?: OnboardingSetup) => void;
 }) {
   const [profileName, setProfileName] = useState('');
-  const [profileAge, setProfileAge] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
   const [latestPubertyAge, setLatestPubertyAge] = useState('15');
   const [regularPrayerAge, setRegularPrayerAge] = useState('');
@@ -1531,8 +1588,8 @@ function OnboardingScreen({
     setProfileEmail((current) => current || accountProfile.email || '');
   }, [accountProfile]);
 
-  const isProfileComplete =
-    profileName.trim() !== '' && profileAge.trim() !== '' && profileEmail.trim() !== '';
+  const trimmedProfileEmail = profileEmail.trim();
+  const isEmailValid = trimmedProfileEmail === '' || EMAIL_REGEX.test(trimmedProfileEmail);
 
   const onboardingPayload = (base?: OnboardingSetup): OnboardingSetup => ({
     ...base,
@@ -1541,9 +1598,8 @@ function OnboardingScreen({
       (language === 'ar'
         ? 'بدء التطبيق ببيانات تعريفية أساسية قبل تقدير القضاء.'
         : 'Started the app with basic profile details before the qadaa estimate.'),
-    profileName,
-    profileAge,
-    profileEmail,
+    profileName: profileName.trim(),
+    profileEmail: trimmedProfileEmail,
   });
 
   return (
@@ -1596,15 +1652,6 @@ function OnboardingScreen({
                 />
               </View>
 
-              <SetupField
-                label={copy.profileAgeLabel}
-                hint={copy.profileAgeHint}
-                value={profileAge}
-                onChangeText={setProfileAge}
-                placeholder="25"
-                language={language}
-              />
-
               <View style={styles.setupField}>
                 <Text style={[styles.setupFieldLabel, isArabic(language) && styles.alignRight]}>
                   {copy.profileEmailLabel}
@@ -1621,6 +1668,11 @@ function OnboardingScreen({
                   placeholder={language === 'ar' ? 'البريد الإلكتروني' : 'Email'}
                   placeholderTextColor={COLORS.mutedText}
                 />
+                {trimmedProfileEmail !== '' && !isEmailValid ? (
+                  <Text style={[styles.accountError, isArabic(language) && styles.alignRight]}>
+                    {copy.profileEmailInvalid}
+                  </Text>
+                ) : null}
               </View>
 
               <View style={styles.authButtons}>
@@ -1683,12 +1735,10 @@ function OnboardingScreen({
 
             <View style={styles.onboardingButtons}>
               <Pressable
-                onPress={isProfileComplete ? () => onComplete(onboardingPayload(estimate ?? undefined)) : undefined}
-                style={[styles.onboardingButton, !isProfileComplete && styles.onboardingButtonDisabled]}
+                onPress={isEmailValid ? () => onComplete(onboardingPayload(estimate ?? undefined)) : undefined}
+                style={[styles.onboardingButton, !isEmailValid && styles.onboardingButtonDisabled]}
               >
-                <Text
-                  style={[styles.onboardingButtonText, !isProfileComplete && styles.onboardingButtonTextDisabled]}
-                >
+                <Text style={[styles.onboardingButtonText, !isEmailValid && styles.onboardingButtonTextDisabled]}>
                   {estimate ? copy.useEstimate : copy.startNow}
                 </Text>
               </Pressable>
@@ -1841,6 +1891,7 @@ function MainApp({
   completeQadaaDay,
   undoQadaaDay,
   resetToday,
+  hadithIndex,
   onLanguageChange,
   authConfigured,
   accountProfile,
@@ -1859,7 +1910,6 @@ function MainApp({
   onSendTestReminder,
   onUpdateTarget,
   onDefaultDailyAddDaysChange,
-  handleShareProgress,
   handleExport,
   handleImport,
 }: {
@@ -1874,6 +1924,7 @@ function MainApp({
   completeQadaaDay: () => void;
   undoQadaaDay: () => void;
   resetToday: () => void;
+  hadithIndex: number;
   onLanguageChange: (language: AppLanguage) => void;
   authConfigured: boolean;
   accountProfile: AccountProfile;
@@ -1892,14 +1943,14 @@ function MainApp({
   onSendTestReminder: () => Promise<void>;
   onUpdateTarget: (setup: OnboardingSetup) => void;
   onDefaultDailyAddDaysChange: (defaultDailyAddDays: number) => void;
-  handleShareProgress: () => void;
   handleExport: () => void;
   handleImport: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const [showPrayerRows, setShowPrayerRows] = useState(false);
   const copy = COPY[state.language];
-  const hadith = DAILY_HADITH[state.language];
+  const hadithItems = DAILY_HADITH[state.language];
+  const hadith = hadithItems[hadithIndex % hadithItems.length];
   const fastingRemainingDays = remainingFastingDays(
     state.fastingTargetDays,
     state.fastingCompletedDays
@@ -1960,11 +2011,17 @@ function MainApp({
             </View>
             <DividerOrnament color={COLORS.gold} />
             <Pressable onPress={() => Linking.openURL(hadith.url)} style={styles.hadithCard}>
-              <Text style={[styles.hadithText, isArabic(state.language) && styles.alignRight]}>
+              <View style={[styles.hadithBadge, isArabic(state.language) && styles.hadithBadgeArabic]}>
+                <Text style={styles.hadithLabel}>{hadith.collection}</Text>
+              </View>
+              <Text
+                style={[
+                  styles.hadithText,
+                  isArabic(state.language) && styles.hadithTextArabic,
+                  isArabic(state.language) && styles.alignRight,
+                ]}
+              >
                 {hadith.text}
-              </Text>
-              <Text style={[styles.hadithSource, isArabic(state.language) && styles.alignRight]}>
-                {hadith.source}
               </Text>
             </Pressable>
           </View>
@@ -2131,13 +2188,8 @@ function MainApp({
               onGoogleSignIn={onGoogleSignIn}
               onFacebookSignIn={onFacebookSignIn}
               onSignOut={onSignOut}
-              accountabilityPartnerName={state.accountabilityPartnerName}
-              onAccountabilityPartnerNameChange={(accountabilityPartnerName) =>
-                setState((current) => ({ ...current, accountabilityPartnerName }))
-              }
               notes={state.notes}
               onNotesChange={(notes) => setState((current) => ({ ...current, notes }))}
-              handleShareProgress={handleShareProgress}
               handleExport={handleExport}
               handleImport={handleImport}
             />
@@ -2588,11 +2640,8 @@ function MoreTab({
   onGoogleSignIn,
   onFacebookSignIn,
   onSignOut,
-  accountabilityPartnerName,
-  onAccountabilityPartnerNameChange,
   notes,
   onNotesChange,
-  handleShareProgress,
   handleExport,
   handleImport,
 }: {
@@ -2625,11 +2674,8 @@ function MoreTab({
   onGoogleSignIn: () => void;
   onFacebookSignIn: () => void;
   onSignOut: () => void;
-  accountabilityPartnerName: string;
-  onAccountabilityPartnerNameChange: (name: string) => void;
   notes: string;
   onNotesChange: (notes: string) => void;
-  handleShareProgress: () => void;
   handleExport: () => void;
   handleImport: () => void;
 }) {
@@ -3024,30 +3070,6 @@ function MoreTab({
               <Text style={notificationEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
                 {notificationEnabled ? copy.disableNotification : copy.enableNotification}
               </Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.settingsDivider} />
-
-          <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
-            {copy.accountabilityTitle}
-          </Text>
-          <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
-            {copy.accountabilityHint}
-          </Text>
-          <View style={styles.partnerCard}>
-            <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-              {copy.partnerNameLabel}
-            </Text>
-            <TextInput
-              value={accountabilityPartnerName}
-              onChangeText={onAccountabilityPartnerNameChange}
-              style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
-              placeholder={copy.partnerNamePlaceholder}
-              placeholderTextColor={COLORS.mutedText}
-            />
-            <Pressable onPress={handleShareProgress} style={styles.shareButton}>
-              <Text style={styles.shareButtonText}>{copy.shareProgress}</Text>
             </Pressable>
           </View>
         </View>
@@ -3934,38 +3956,52 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
   hadithCard: {
-    backgroundColor: 'rgba(247, 243, 234, 0.08)',
+    backgroundColor: 'rgba(247, 243, 234, 0.07)',
     borderRadius: 22,
-    padding: 18,
-    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+    gap: 14,
     borderWidth: 1,
     borderColor: COLORS.lightGold + '1f',
   },
   hadithBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: COLORS.inputBg,
+    backgroundColor: COLORS.gold + '18',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderWidth: 1,
-    borderColor: COLORS.gold + '20',
+    borderColor: COLORS.gold + '35',
+  },
+  hadithBadgeArabic: {
+    alignSelf: 'flex-end',
   },
   hadithLabel: {
     color: COLORS.lightGold,
     fontSize: 11,
     fontWeight: '800',
-    textTransform: 'uppercase',
   },
   hadithText: {
     color: COLORS.cream,
-    fontSize: 18,
+    fontSize: 21,
     fontWeight: '700',
-    lineHeight: 26,
+    lineHeight: 32,
+    letterSpacing: 0.2,
+    fontFamily: Platform.select({
+      ios: 'Georgia',
+      android: 'serif',
+      default: 'serif',
+    }),
   },
-  hadithSource: {
-    color: '#C8D6CD',
-    fontSize: 12,
-    lineHeight: 18,
+  hadithTextArabic: {
+    fontSize: 24,
+    lineHeight: 38,
+    letterSpacing: 0,
+    fontFamily: Platform.select({
+      ios: 'Geeza Pro',
+      android: 'serif',
+      default: 'serif',
+    }),
   },
   focusLabel: {
     color: COLORS.lightGold,
