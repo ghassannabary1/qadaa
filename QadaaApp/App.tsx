@@ -27,6 +27,7 @@ import {
   applyFastingCompletion,
   applyFullDayCompletion,
   applyPrayerCompletion,
+  applyPrayerCompletionForDay,
   calculateKafarahPoorPeople,
   countsFromMissedDays,
   DailyActivitySummary,
@@ -35,6 +36,7 @@ import {
   estimateCompletionDate,
   estimateMissedDaysFromShafiiSetup,
   FastingDailySummary,
+  groupFastingActivityByMonth,
   FastingLogEntry,
   getRecentDailyActivity,
   getRecentFastingActivity,
@@ -49,6 +51,7 @@ import {
   rollbackFastingCompletion,
   rollbackFullDayCompletion,
   rollbackPrayerCompletion,
+  rollbackPrayerCompletionForDay,
   totalCounts,
 } from './src/utils/qadaa';
 import {
@@ -59,7 +62,7 @@ import {
   signOutUser,
   supabase,
 } from './src/utils/auth';
-import { createBackup, exportBackup, getBackupAge } from './src/utils/backup';
+import { createBackup, exportBackup, getBackupAge, restoreBackup } from './src/utils/backup';
 import {
   cancelDailyReminderNotification,
   DAILY_REMINDER_COUNT_ACTION_ID,
@@ -68,6 +71,7 @@ import {
   ensureNotificationInfrastructure,
   requestNotificationPermissionAsync,
   scheduleDailyReminderNotification,
+  sendTestReminderNotification,
 } from './src/utils/notifications';
 import { DividerOrnament } from './src/ui/patterns/DividerOrnament';
 
@@ -119,8 +123,11 @@ type Totals = {
 
 type OnboardingSetup = {
   notes: string;
-  target: PrayerCounts;
+  target?: PrayerCounts;
   missedDays?: number;
+  profileName?: string;
+  profileAge?: string;
+  profileEmail?: string;
 };
 
 type AccountProfile = ReturnType<typeof getUserProfile>;
@@ -134,6 +141,16 @@ type CopyBlock = {
   dailyHadithIntro: string;
   onboardingTitle: string;
   onboardingSubtitle: string;
+  profileSetupTitle: string;
+  profileSetupBody: string;
+  profileNameLabel: string;
+  profileNameHint: string;
+  profileAgeLabel: string;
+  profileAgeHint: string;
+  profileEmailLabel: string;
+  profilePrefillHint: string;
+  prefillFromGoogle: string;
+  prefillFromFacebook: string;
   onboardingEstimateTitle: string;
   onboardingEstimateBody: string;
   onboardingTrustTitle: string;
@@ -161,9 +178,6 @@ type CopyBlock = {
   overallProgress: string;
   progressTitle: string;
   progressHint: string;
-  consistencyTitle: string;
-  consistencySummary: string;
-  last7Days: string;
   quickAddTitle: string;
   prayerRowsTitle: string;
   showPrayerRows: string;
@@ -233,6 +247,9 @@ type CopyBlock = {
   notificationMinuteLabel: string;
   notificationSaveTime: string;
   notificationTimeInvalid: string;
+  notificationTimeSaved: string;
+  notificationTestReminder: string;
+  notificationTestSent: string;
   notificationStatusLabel: string;
   notificationStatusOn: string;
   notificationStatusOff: string;
@@ -256,6 +273,11 @@ type CopyBlock = {
   backupHint: string;
   exportBackup: string;
   importBackup: string;
+  backupExportSuccess: string;
+  backupExportFailure: string;
+  backupImportConfirm: string;
+  backupImportSuccess: string;
+  backupImportFailure: string;
   autoBackup: string;
   enabled: string;
   openSource: string;
@@ -309,6 +331,17 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     onboardingTitle: 'Qadaa',
     onboardingSubtitle:
       'Choose your language, set a simple Shafi\'i estimate, and start with a calm, easy flow.',
+    profileSetupTitle: 'Your profile',
+    profileSetupBody:
+      'Start with a few basics so the app feels personal from the first day. You can also pull your name and email from Google or Facebook.',
+    profileNameLabel: 'Name',
+    profileNameHint: 'Use the name you want to see in the app.',
+    profileAgeLabel: 'Current age',
+    profileAgeHint: 'Optional, but useful for personal setup context.',
+    profileEmailLabel: 'Email',
+    profilePrefillHint: 'Google or Facebook can fill your name and email. Age still needs to be entered by you.',
+    prefillFromGoogle: 'Fill from Google',
+    prefillFromFacebook: 'Fill from Facebook',
     onboardingEstimateTitle: "First-time Shafi'i estimate",
     onboardingEstimateBody:
       'Estimate from the latest likely puberty age until the age when regular prayer became certain. If unsure whether a prayer was prayed, count it. Menstruation days can be excluded.',
@@ -342,9 +375,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     overallProgress: 'Overall progress',
     progressTitle: 'Progress',
     progressHint: 'See what is left and when you finish if you count one qadaa day each day.',
-    consistencyTitle: 'Consistency',
-    consistencySummary: 'Counted on {count} of the last 7 days',
-    last7Days: 'Last 7 days',
     quickAddTitle: 'Quick add',
     prayerRowsTitle: 'Prayer details',
     showPrayerRows: 'Show prayer details',
@@ -417,6 +447,9 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationMinuteLabel: 'Minute',
     notificationSaveTime: 'Save reminder time',
     notificationTimeInvalid: 'Enter a valid time using 24-hour values.',
+    notificationTimeSaved: 'Reminder time updated.',
+    notificationTestReminder: 'Send test reminder',
+    notificationTestSent: 'A test reminder has been sent.',
     notificationStatusLabel: 'Status',
     notificationStatusOn: 'On',
     notificationStatusOff: 'Off',
@@ -443,6 +476,11 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     backupHint: 'Your data auto-saves locally. Export a manual backup any time.',
     exportBackup: 'Export Backup',
     importBackup: 'Import Backup',
+    backupExportSuccess: 'Backup export is ready to share or save.',
+    backupExportFailure: 'Backup export failed.',
+    backupImportConfirm: 'Restore the latest saved backup? This will replace your current local data.',
+    backupImportSuccess: 'Backup restored successfully.',
+    backupImportFailure: 'Backup restore failed or no saved backup was found.',
     autoBackup: 'Auto-backup',
     enabled: 'Enabled',
     openSource: 'Open source',
@@ -498,6 +536,17 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     onboardingTitle: 'قضاء',
     onboardingSubtitle:
       'اختر اللغة، واضبط تقديراً أولياً على المذهب الشافعي، ثم ابدأ بخطوات واضحة وبسيطة.',
+    profileSetupTitle: 'بياناتك',
+    profileSetupBody:
+      'ابدأ ببعض المعلومات الأساسية حتى يكون التطبيق أقرب لك من أول يوم. ويمكنك أيضاً جلب الاسم والبريد من جوجل أو فيسبوك.',
+    profileNameLabel: 'الاسم',
+    profileNameHint: 'اكتب الاسم الذي تريد ظهوره داخل التطبيق.',
+    profileAgeLabel: 'العمر الحالي',
+    profileAgeHint: 'اختياري، لكنه يفيد في ضبط البداية بشكل شخصي.',
+    profileEmailLabel: 'البريد الإلكتروني',
+    profilePrefillHint: 'يمكن لجوجل أو فيسبوك تعبئة الاسم والبريد، أما العمر فيبقى لإدخالك أنت.',
+    prefillFromGoogle: 'تعبئة من جوجل',
+    prefillFromFacebook: 'تعبئة من فيسبوك',
     onboardingEstimateTitle: 'تقدير أولي على المذهب الشافعي',
     onboardingEstimateBody:
       'يبدأ التقدير من آخر سنّ يُحتمل فيه البلوغ إلى السنّ الذي تيقنت فيه من الانتظام في الصلاة. وإذا شككت هل صليت صلاةً أم لا فاحسبها. ويمكن استثناء أيام الحيض.',
@@ -531,9 +580,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     overallProgress: 'التقدّم العام',
     progressTitle: 'التقدّم',
     progressHint: 'شاهد المتبقي وتاريخ الانتهاء إذا احتسبت يوم قضاء واحداً كل يوم.',
-    consistencyTitle: 'الانتظام',
-    consistencySummary: 'احتسبت في {count} من آخر 7 أيام',
-    last7Days: 'آخر 7 أيام',
     quickAddTitle: 'إضافة سريعة',
     prayerRowsTitle: 'تفاصيل الصلوات',
     showPrayerRows: 'إظهار تفاصيل الصلوات',
@@ -606,6 +652,9 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationMinuteLabel: 'الدقيقة',
     notificationSaveTime: 'حفظ وقت التذكير',
     notificationTimeInvalid: 'أدخل وقتاً صحيحاً بصيغة 24 ساعة.',
+    notificationTimeSaved: 'تم تحديث وقت التذكير.',
+    notificationTestReminder: 'إرسال تذكير تجريبي',
+    notificationTestSent: 'تم إرسال تذكير تجريبي.',
     notificationStatusLabel: 'الحالة',
     notificationStatusOn: 'مفعّل',
     notificationStatusOff: 'متوقف',
@@ -632,6 +681,11 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     backupHint: 'بياناتك تُحفظ محلياً تلقائياً. ويمكنك التصدير في أي وقت لنسخة يدوية.',
     exportBackup: 'تصدير نسخة',
     importBackup: 'استيراد نسخة',
+    backupExportSuccess: 'أصبحت نسخة الاحتياط جاهزة للمشاركة أو الحفظ.',
+    backupExportFailure: 'فشل تصدير نسخة الاحتياط.',
+    backupImportConfirm: 'هل تريد استعادة آخر نسخة احتياطية محفوظة؟ سيؤدي ذلك إلى استبدال بياناتك المحلية الحالية.',
+    backupImportSuccess: 'تمت استعادة النسخة الاحتياطية بنجاح.',
+    backupImportFailure: 'فشلت استعادة النسخة الاحتياطية أو لم يتم العثور على نسخة محفوظة.',
     autoBackup: 'الحفظ التلقائي',
     enabled: 'مفعّل',
     openSource: 'عرض المصدر',
@@ -740,47 +794,47 @@ const TRUSTED_QA: Record<AppLanguage, TrustedQaItem[]> = {
     {
       title: 'Can I make up missed obligatory prayers during the time of a current prayer?',
       category: 'Prayer qadaa',
-      scholar: 'Darul Iftaa Jordan',
-      source: 'Jordanian Iftaa via IslamQA.org',
+      scholar: 'Dar al-Iftaa al-Urdunniyah',
+      source: 'aliftaa.jo',
       summary:
         'Missed obligatory prayers are a debt due to Allah and must be made up. Deliberately missed prayers should be made up immediately, even if that takes one’s available time.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226885/is-it-permissible-to-make-up-missed-obligatory-prayers-at-the-time-of-a-current-prayer/',
+      url: 'https://www.aliftaa.jo/fatwa/2705/%D9%87%D9%84-%D9%8A%D8%AC%D9%88%D8%B2-%D9%82%D8%B6%D8%A7%D8%A1-%D8%A3%D9%83%D8%AB%D8%B1-%D9%85%D9%86-%D9%81%D8%B1%D8%B6-%D9%81%D8%A7%D8%A6%D8%AA-%D9%81%D9%8A-%D9%88%D9%82%D8%AA-%D9%83%D9%84-%D8%B5%D9%84%D8%A7%D8%A9',
     },
     {
       title: 'Can missed prayers be made up at disliked times?',
       category: 'Prayer qadaa',
-      scholar: 'Darul Iftaa Jordan',
-      source: 'Jordanian Iftaa via IslamQA.org',
+      scholar: 'Dar al-Iftaa al-Urdunniyah',
+      source: 'aliftaa.jo',
       summary:
         'Yes. Missed prayers may be made up at any time, including times in which voluntary prayer is otherwise disliked.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/225513/is-it-permissible-to-make-up-missed-prayers-at-the-times-in-which-praying-is-disliked/',
+      url: 'https://aliftaa.jo/fatwa/4339/',
     },
     {
       title: 'What if someone broke many Ramadan fasts without a valid excuse?',
       category: 'Fasting qadaa',
-      scholar: 'Darul Iftaa Jordan',
-      source: 'Jordanian Iftaa via IslamQA.org',
+      scholar: 'Dar al-Iftaa al-Urdunniyah',
+      source: 'aliftaa.jo',
       summary:
         'They must repent and make up the missed days. If the makeup was delayed until later Ramadans without excuse, feeding for each missed day is also due according to the answer.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226057/broke-many-fasts-in-ramadan-with-no-valid-excuse/',
+      url: 'https://aliftaa.jo/fatwa/4156/',
     },
     {
       title: 'Does foreplay or ejaculation in Ramadan require makeup?',
       category: 'Fasting qadaa',
-      scholar: 'Darul Iftaa Jordan',
-      source: 'Jordanian Iftaa via IslamQA.org',
+      scholar: 'Dar al-Iftaa al-Urdunniyah',
+      source: 'aliftaa.jo',
       summary:
         'If ejaculation happens through forbidden foreplay, the fast is invalid and that day must be made up. The answer distinguishes this from other cases and does not treat it as general kaffarah for every invalid fast.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226571/it-is-forbidden-for-a-fasting-person-to-satisfy-sexual-desire-by-foreplay/',
+      url: 'https://www.aliftaa.jo/research-fatwas/2665/%D8%AD%D9%83%D9%85-%D8%A7%D9%84%D8%A7%D8%B3%D8%AA%D9%85%D9%86%D8%A7%D8%A1-%D9%81%D9%8A-%D9%86%D9%87%D8%A7%D8%B1-%D8%B1%D9%85%D8%B6%D8%A7%D9%86-%D9%84%D9%84%D8%B9%D9%84%D8%A7%D8%AC',
     },
     {
       title: 'Can kaffarah feeding be given to one poor person if many are hard to find?',
       category: 'Kafarah',
-      scholar: 'Darul Iftaa Jordan',
-      source: 'Jordanian Iftaa via IslamQA.org',
+      scholar: 'Dar al-Iftaa al-Urdunniyah',
+      source: 'aliftaa.jo',
       summary:
         'The answer discusses a permissive view when finding the full number is difficult, while still treating kaffarah as a distinct obligation with detailed rules.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/228836/ruling-on-giving-the-value-of-expiatory-gifts-to-one-person/',
+      url: 'https://aliftaa.jo/research-fatwas/3449/Articles',
     },
   ],
   ar: [
@@ -788,46 +842,46 @@ const TRUSTED_QA: Record<AppLanguage, TrustedQaItem[]> = {
       title: 'هل يجوز قضاء الصلوات الفائتة وقت الصلاة الحاضرة؟',
       category: 'قضاء الصلاة',
       scholar: 'دار الإفتاء الأردنية',
-      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      source: 'aliftaa.jo',
       summary:
         'الصلوات الفائتة دين في ذمة المسلم ويجب قضاؤها. وما فات عمداً يجب المبادرة إلى قضائه بحسب الاستطاعة.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226885/is-it-permissible-to-make-up-missed-obligatory-prayers-at-the-time-of-a-current-prayer/',
+      url: 'https://www.aliftaa.jo/fatwa/2705/%D9%87%D9%84-%D9%8A%D8%AC%D9%88%D8%B2-%D9%82%D8%B6%D8%A7%D8%A1-%D8%A3%D9%83%D8%AB%D8%B1-%D9%85%D9%86-%D9%81%D8%B1%D8%B6-%D9%81%D8%A7%D8%A6%D8%AA-%D9%81%D9%8A-%D9%88%D9%82%D8%AA-%D9%83%D9%84-%D8%B5%D9%84%D8%A7%D8%A9',
     },
     {
       title: 'هل يجوز قضاء الصلوات الفائتة في أوقات الكراهة؟',
       category: 'قضاء الصلاة',
       scholar: 'دار الإفتاء الأردنية',
-      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      source: 'aliftaa.jo',
       summary:
         'نعم، يجوز قضاء الصلوات الفائتة في كل وقت، حتى في الأوقات التي تُكره فيها بعض النوافل.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/225513/is-it-permissible-to-make-up-missed-prayers-at-the-times-in-which-praying-is-disliked/',
+      url: 'https://aliftaa.jo/fatwa/4339/',
     },
     {
       title: 'ماذا يلزم من أفطر أياماً كثيرة من رمضان بلا عذر؟',
       category: 'قضاء الصيام',
       scholar: 'دار الإفتاء الأردنية',
-      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      source: 'aliftaa.jo',
       summary:
         'يلزمه التوبة وقضاء الأيام الفائتة، وإذا أخر القضاء إلى رمضانات لاحقة بلا عذر لزمته الفدية عن كل يوم بحسب ما ورد في الجواب.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226057/broke-many-fasts-in-ramadan-with-no-valid-excuse/',
+      url: 'https://aliftaa.jo/fatwa/4156/',
     },
     {
       title: 'هل المباشرة أو الإنزال في نهار رمضان يوجب القضاء؟',
       category: 'قضاء الصيام',
       scholar: 'دار الإفتاء الأردنية',
-      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      source: 'aliftaa.jo',
       summary:
         'إذا حصل الإنزال بسبب مباشرة محرمة فسد الصوم ووجب قضاء ذلك اليوم، مع التفريق بين هذه الصورة وبين الكفارة الخاصة.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/226571/it-is-forbidden-for-a-fasting-person-to-satisfy-sexual-desire-by-foreplay/',
+      url: 'https://www.aliftaa.jo/research-fatwas/2665/%D8%AD%D9%83%D9%85-%D8%A7%D9%84%D8%A7%D8%B3%D8%AA%D9%85%D9%86%D8%A7%D8%A1-%D9%81%D9%8A-%D9%86%D9%87%D8%A7%D8%B1-%D8%B1%D9%85%D8%B6%D8%A7%D9%86-%D9%84%D9%84%D8%B9%D9%84%D8%A7%D8%AC',
     },
     {
       title: 'هل يجوز دفع كفارة الإطعام لمسكين واحد عند التعذر؟',
       category: 'الكفارة',
       scholar: 'دار الإفتاء الأردنية',
-      source: 'دار الإفتاء الأردنية عبر IslamQA.org',
+      source: 'aliftaa.jo',
       summary:
         'يتناول الجواب وجهاً ميسراً عند صعوبة إيجاد العدد الكامل، مع بقاء الكفارة باباً مستقلاً له شروطه وتفصيله.',
-      url: 'https://islamqa.org/shafii/darul-iftaa-jordan/228836/ruling-on-giving-the-value-of-expiatory-gifts-to-one-person/',
+      url: 'https://aliftaa.jo/research-fatwas/3449/Articles',
     },
   ],
 };
@@ -1029,6 +1083,14 @@ export default function App() {
     setState((current) => rollbackPrayerCompletion(current, prayer));
   };
 
+  const incrementCompletedForDay = (prayer: PrayerKey, dayKey: string) => {
+    setState((current) => applyPrayerCompletionForDay(current, prayer, dayKey));
+  };
+
+  const decrementCompletedForDay = (prayer: PrayerKey, dayKey: string) => {
+    setState((current) => rollbackPrayerCompletionForDay(current, prayer, dayKey));
+  };
+
   const completeQadaaDay = () => {
     setState((current) => applyFullDayCompletion(current));
   };
@@ -1117,6 +1179,7 @@ export default function App() {
             notificationMinute: minute,
             notificationScheduleId,
           }));
+          Alert.alert(copy.notificationTitle, copy.notificationTimeSaved);
           return;
         }
 
@@ -1125,6 +1188,9 @@ export default function App() {
           notificationHour: hour,
           notificationMinute: minute,
         }));
+
+        Alert.alert(copy.notificationTitle, copy.notificationTimeSaved);
+        return;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to update reminder time.';
         Alert.alert(copy.notificationTitle, message);
@@ -1132,6 +1198,24 @@ export default function App() {
     },
     [state.language, state.notificationEnabled, state.notificationScheduleId]
   );
+
+  const sendTestReminder = useCallback(async () => {
+    const copy = COPY[state.language];
+    const granted = await requestNotificationPermissionAsync();
+
+    if (!granted) {
+      Alert.alert(copy.notificationTitle, copy.notificationPermissionDenied);
+      return;
+    }
+
+    try {
+      await sendTestReminderNotification(buildDailyReminderCopy(copy));
+      Alert.alert(copy.notificationTitle, copy.notificationTestSent);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to send test reminder.';
+      Alert.alert(copy.notificationTitle, message);
+    }
+  }, [state.language]);
 
   const resetToday = () => {
     const copy = COPY[state.language];
@@ -1155,7 +1239,12 @@ export default function App() {
     if (setup) {
       setState((current) => ({
         ...current,
-        target: setup.target,
+        target: setup.target ?? current.target,
+        profileName: setup.profileName?.trim() ? setup.profileName.trim() : current.profileName,
+        profileAge: setup.profileAge?.trim() ? setup.profileAge.trim() : current.profileAge,
+        profileEmail: setup.profileEmail?.trim()
+          ? setup.profileEmail.trim()
+          : current.profileEmail,
         notes: current.notes === DEFAULT_NOTES ? setup.notes : `${setup.notes}\n\n${current.notes}`,
       }));
     }
@@ -1165,30 +1254,56 @@ export default function App() {
 
   const handleExport = useCallback(async () => {
     const copy = COPY[state.language];
-    Alert.alert(copy.exportBackup, copy.backupHint, [
-      { text: 'Cancel', style: 'cancel' },
+    try {
+      const exportData = await exportBackup();
+
+      if (!exportData) {
+        Alert.alert(copy.exportBackup, copy.backupExportFailure);
+        return;
+      }
+
+      await Share.share({
+        message: exportData,
+        title: copy.exportBackup,
+      });
+      Alert.alert(copy.exportBackup, copy.backupExportSuccess);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : copy.backupExportFailure;
+      Alert.alert(copy.exportBackup, message);
+    }
+  }, [state.language]);
+
+  const handleImport = useCallback(async () => {
+    const copy = COPY[state.language];
+    Alert.alert(copy.importBackup, copy.backupImportConfirm, [
+      { text: copy.cancel, style: 'cancel' },
       {
-        text: copy.exportBackup,
+        text: copy.importBackup,
+        style: 'destructive',
         onPress: async () => {
-          const exportData = await exportBackup();
-          if (exportData) {
-            console.log('Exported:', exportData);
-            Alert.alert(copy.exportBackup, copy.enabled);
+          try {
+            const restored = await restoreBackup();
+
+            if (!restored) {
+              Alert.alert(copy.importBackup, copy.backupImportFailure);
+              return;
+            }
+
+            setState(hydrateState(restored));
+            Alert.alert(copy.importBackup, copy.backupImportSuccess);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : copy.backupImportFailure;
+            Alert.alert(copy.importBackup, message);
           }
         },
       },
     ]);
   }, [state.language]);
 
-  const handleImport = useCallback(async () => {
-    const copy = COPY[state.language];
-    Alert.alert(copy.importBackup, 'Coming soon.', [{ text: 'OK' }]);
-  }, [state.language]);
-
   const handleUpdateTarget = useCallback((setup: OnboardingSetup) => {
     setState((current) => ({
       ...current,
-      target: setup.target,
+      target: setup.target ?? current.target,
       notes: current.notes === DEFAULT_NOTES ? setup.notes : `${setup.notes}\n\n${current.notes}`,
     }));
   }, []);
@@ -1257,6 +1372,11 @@ export default function App() {
           <OnboardingScreen
             language={state.language}
             onLanguageChange={updateLanguage}
+            accountProfile={accountProfile}
+            authBusyProvider={authBusyProvider}
+            authError={authError}
+            onGoogleSignIn={() => handleProviderSignIn('google')}
+            onFacebookSignIn={() => handleProviderSignIn('facebook')}
             onComplete={dismissOnboarding}
           />
         ) : (
@@ -1267,6 +1387,8 @@ export default function App() {
             dailyHistory={dailyHistory}
             incrementCompleted={incrementCompleted}
             decrementCompleted={decrementCompleted}
+            incrementCompletedForDay={incrementCompletedForDay}
+            decrementCompletedForDay={decrementCompletedForDay}
             completeQadaaDay={completeQadaaDay}
             undoQadaaDay={undoQadaaDay}
             resetToday={resetToday}
@@ -1288,6 +1410,7 @@ export default function App() {
             onEnableDailyReminder={enableDailyReminder}
             onDisableDailyReminder={disableDailyReminder}
             onNotificationTimeChange={updateDailyReminderTime}
+            onSendTestReminder={sendTestReminder}
             onUpdateTarget={handleUpdateTarget}
             onDefaultDailyAddDaysChange={(defaultDailyAddDays) =>
               setState((current) => ({ ...current, defaultDailyAddDays }))
@@ -1367,12 +1490,25 @@ function TabBar({
 function OnboardingScreen({
   language,
   onLanguageChange,
+  accountProfile,
+  authBusyProvider,
+  authError,
+  onGoogleSignIn,
+  onFacebookSignIn,
   onComplete,
 }: {
   language: AppLanguage;
   onLanguageChange: (language: AppLanguage) => void;
+  accountProfile: AccountProfile;
+  authBusyProvider: 'google' | 'facebook' | null;
+  authError: string | null;
+  onGoogleSignIn: () => void;
+  onFacebookSignIn: () => void;
   onComplete: (setup?: OnboardingSetup) => void;
 }) {
+  const [profileName, setProfileName] = useState('');
+  const [profileAge, setProfileAge] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
   const [latestPubertyAge, setLatestPubertyAge] = useState('15');
   const [regularPrayerAge, setRegularPrayerAge] = useState('');
   const [menstruationDays, setMenstruationDays] = useState('0');
@@ -1387,6 +1523,25 @@ function OnboardingScreen({
       }),
     [language, latestPubertyAge, regularPrayerAge, menstruationDays]
   );
+
+  useEffect(() => {
+    if (!accountProfile) return;
+
+    setProfileName((current) => current || accountProfile.name || '');
+    setProfileEmail((current) => current || accountProfile.email || '');
+  }, [accountProfile]);
+
+  const onboardingPayload = (base?: OnboardingSetup): OnboardingSetup => ({
+    ...base,
+    notes:
+      base?.notes ??
+      (language === 'ar'
+        ? 'بدء التطبيق ببيانات تعريفية أساسية قبل تقدير القضاء.'
+        : 'Started the app with basic profile details before the qadaa estimate.'),
+    profileName,
+    profileAge,
+    profileEmail,
+  });
 
   return (
     <View style={styles.onboarding}>
@@ -1416,6 +1571,95 @@ function OnboardingScreen({
 
             <View style={styles.setupCard}>
               <Text style={[styles.setupTitle, isArabic(language) && styles.alignRight]}>
+                {copy.profileSetupTitle}
+              </Text>
+              <Text style={[styles.setupBody, isArabic(language) && styles.alignRight]}>
+                {copy.profileSetupBody}
+              </Text>
+
+              <View style={styles.setupField}>
+                <Text style={[styles.setupFieldLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.profileNameLabel}
+                </Text>
+                <Text style={[styles.setupFieldHint, isArabic(language) && styles.alignRight]}>
+                  {copy.profileNameHint}
+                </Text>
+                <TextInput
+                  value={profileName}
+                  onChangeText={setProfileName}
+                  style={styles.setupInput}
+                  placeholder={language === 'ar' ? 'الاسم' : 'Your name'}
+                  placeholderTextColor={COLORS.mutedText}
+                />
+              </View>
+
+              <SetupField
+                label={copy.profileAgeLabel}
+                hint={copy.profileAgeHint}
+                value={profileAge}
+                onChangeText={setProfileAge}
+                placeholder="25"
+                language={language}
+              />
+
+              <View style={styles.setupField}>
+                <Text style={[styles.setupFieldLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.profileEmailLabel}
+                </Text>
+                <Text style={[styles.setupFieldHint, isArabic(language) && styles.alignRight]}>
+                  {copy.profilePrefillHint}
+                </Text>
+                <TextInput
+                  value={profileEmail}
+                  onChangeText={setProfileEmail}
+                  style={styles.setupInput}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  placeholder={language === 'ar' ? 'البريد الإلكتروني' : 'Email'}
+                  placeholderTextColor={COLORS.mutedText}
+                />
+              </View>
+
+              <View style={styles.authButtons}>
+                <TouchableOpacity onPress={onGoogleSignIn} style={styles.oauthButtonPrimary}>
+                  <View style={styles.oauthButtonRow}>
+                    <Text style={styles.oauthButtonBrandPrimary}>G</Text>
+                    <Text style={styles.oauthButtonPrimaryText}>{copy.prefillFromGoogle}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onFacebookSignIn} style={styles.oauthButtonSecondary}>
+                  <View style={styles.oauthButtonRow}>
+                    <Text style={styles.oauthButtonBrandSecondary}>f</Text>
+                    <Text style={styles.oauthButtonSecondaryText}>{copy.prefillFromFacebook}</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {accountProfile ? (
+                <Text style={[styles.accountMeta, isArabic(language) && styles.alignRight]}>
+                  {accountProfile.name}
+                  {accountProfile.email ? ` • ${accountProfile.email}` : ''}
+                </Text>
+              ) : null}
+
+              {authBusyProvider ? (
+                <View style={styles.accountLoadingRow}>
+                  <ActivityIndicator color={COLORS.gold} />
+                  <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
+                    {authBusyProvider === 'google' ? copy.prefillFromGoogle : copy.prefillFromFacebook}
+                  </Text>
+                </View>
+              ) : null}
+
+              {authError ? (
+                <Text style={[styles.accountError, isArabic(language) && styles.alignRight]}>
+                  {authError}
+                </Text>
+              ) : null}
+            </View>
+
+            <View style={styles.setupCard}>
+              <Text style={[styles.setupTitle, isArabic(language) && styles.alignRight]}>
                 {copy.onboardingEstimateTitle}
               </Text>
               <Text style={[styles.setupBody, isArabic(language) && styles.alignRight]}>
@@ -1435,12 +1679,15 @@ function OnboardingScreen({
             </View>
 
             <View style={styles.onboardingButtons}>
-              <Pressable onPress={() => onComplete(estimate ?? undefined)} style={styles.onboardingButton}>
+              <Pressable
+                onPress={() => onComplete(onboardingPayload(estimate ?? undefined))}
+                style={styles.onboardingButton}
+              >
                 <Text style={styles.onboardingButtonText}>
                   {estimate ? copy.useEstimate : copy.startNow}
                 </Text>
               </Pressable>
-              <Pressable onPress={() => onComplete()} style={styles.ghostButton}>
+              <Pressable onPress={() => onComplete(onboardingPayload())} style={styles.ghostButton}>
                 <Text style={styles.ghostButtonText}>{copy.skipForNow}</Text>
               </Pressable>
             </View>
@@ -1584,6 +1831,8 @@ function MainApp({
   dailyHistory,
   incrementCompleted,
   decrementCompleted,
+  incrementCompletedForDay,
+  decrementCompletedForDay,
   completeQadaaDay,
   undoQadaaDay,
   resetToday,
@@ -1602,6 +1851,7 @@ function MainApp({
   onEnableDailyReminder,
   onDisableDailyReminder,
   onNotificationTimeChange,
+  onSendTestReminder,
   onUpdateTarget,
   onDefaultDailyAddDaysChange,
   handleShareProgress,
@@ -1614,6 +1864,8 @@ function MainApp({
   dailyHistory: DailyActivitySummary[];
   incrementCompleted: (prayer: PrayerKey) => void;
   decrementCompleted: (prayer: PrayerKey) => void;
+  incrementCompletedForDay: (prayer: PrayerKey, dayKey: string) => void;
+  decrementCompletedForDay: (prayer: PrayerKey, dayKey: string) => void;
   completeQadaaDay: () => void;
   undoQadaaDay: () => void;
   resetToday: () => void;
@@ -1632,6 +1884,7 @@ function MainApp({
   onEnableDailyReminder: () => void;
   onDisableDailyReminder: () => void;
   onNotificationTimeChange: (hour: number, minute: number) => Promise<void>;
+  onSendTestReminder: () => Promise<void>;
   onUpdateTarget: (setup: OnboardingSetup) => void;
   onDefaultDailyAddDaysChange: (defaultDailyAddDays: number) => void;
   handleShareProgress: () => void;
@@ -1650,15 +1903,10 @@ function MainApp({
     ? Math.min(state.fastingCompletedDays / state.fastingTargetDays, 1)
     : 0;
   const fastingHistory = useMemo(() => getRecentFastingActivity(state.fastingLog, 30), [state.fastingLog]);
-  const recentConsistency = useMemo(() => {
-    const lastSevenDays = dailyHistory.slice(-7);
-    const activeDays = lastSevenDays.filter((day) => day.totalCount > 0).length;
-
-    return {
-      days: lastSevenDays,
-      activeDays,
-    };
-  }, [dailyHistory]);
+  const fastingHistorySections = useMemo(
+    () => groupFastingActivityByMonth(fastingHistory),
+    [fastingHistory]
+  );
   const progress = useMemo(() => {
     const percent = totals.target > 0 ? Math.min(totals.completed / totals.target, 1) : 0;
     const estimatedDaysLeft = estimateCompletionDays(
@@ -1723,7 +1971,6 @@ function MainApp({
                 totals={totals}
                 progress={progress}
                 language={state.language}
-                consistency={recentConsistency}
               />
 
               <View style={styles.section}>
@@ -1815,7 +2062,13 @@ function MainApp({
           ) : null}
 
           {activeTab === 'history' ? (
-            <HistoryTab copy={copy} language={state.language} dailyHistory={dailyHistory} />
+            <HistoryTab
+              copy={copy}
+              language={state.language}
+              dailyHistory={dailyHistory}
+              onIncrementPrayerForDay={incrementCompletedForDay}
+              onDecrementPrayerForDay={decrementCompletedForDay}
+            />
           ) : null}
 
           {activeTab === 'fasting' && state.fastingEnabled ? (
@@ -1827,6 +2080,7 @@ function MainApp({
               remainingDays={fastingRemainingDays}
               progress={fastingProgress}
               history={fastingHistory}
+              historySections={fastingHistorySections}
               kafarahDays={state.fastingKafarahDays}
               onAddDay={completeFastingDay}
               onUndoDay={undoFastingDay}
@@ -1900,10 +2154,14 @@ function HistoryTab({
   copy,
   language,
   dailyHistory,
+  onIncrementPrayerForDay,
+  onDecrementPrayerForDay,
 }: {
   copy: CopyBlock;
   language: AppLanguage;
   dailyHistory: DailyActivitySummary[];
+  onIncrementPrayerForDay: (prayer: PrayerKey, dayKey: string) => void;
+  onDecrementPrayerForDay: (prayer: PrayerKey, dayKey: string) => void;
 }) {
   const [monthOffset, setMonthOffset] = useState(0);
   const [showDayDetails, setShowDayDetails] = useState(false);
@@ -1997,18 +2255,33 @@ function HistoryTab({
                 <Text style={[styles.selectedDayBody, isArabic(language) && styles.alignRight]}>
                   {copy.noRecordedPrayers}
                 </Text>
-              ) : (
-                <View style={styles.prayerBreakdownList}>
-                  {PRAYER_KEYS.map((prayer) => (
-                    <View key={prayer} style={styles.prayerBreakdownRow}>
-                      <Text style={[styles.prayerBreakdownName, isArabic(language) && styles.alignRight]}>
-                        {language === 'ar' ? PRAYER_LABELS[prayer].arabic : PRAYER_LABELS[prayer].label}
-                      </Text>
+              ) : null}
+              <View style={styles.prayerBreakdownList}>
+                {PRAYER_KEYS.map((prayer) => (
+                  <View key={prayer} style={styles.prayerBreakdownRow}>
+                    <Text
+                      style={[styles.prayerBreakdownName, isArabic(language) && styles.alignRight]}
+                    >
+                      {language === 'ar' ? PRAYER_LABELS[prayer].arabic : PRAYER_LABELS[prayer].label}
+                    </Text>
+                    <View style={styles.prayerBreakdownActions}>
+                      <Pressable
+                        onPress={() => onIncrementPrayerForDay(prayer, selectedDay.dayKey)}
+                        style={[styles.historyAdjustButton, styles.historyAdjustButtonAdd]}
+                      >
+                        <Text style={styles.historyAdjustButtonText}>+1</Text>
+                      </Pressable>
                       <Text style={styles.prayerBreakdownValue}>{selectedDay.prayerCounts[prayer]}</Text>
+                      <Pressable
+                        onPress={() => onDecrementPrayerForDay(prayer, selectedDay.dayKey)}
+                        style={[styles.historyAdjustButton, styles.historyAdjustButtonUndo]}
+                      >
+                        <Text style={styles.historyAdjustButtonText}>{copy.undo}</Text>
+                      </Pressable>
                     </View>
-                  ))}
-                </View>
-              )}
+                  </View>
+                ))}
+              </View>
               <Pressable onPress={() => setShowDayDetails(false)} style={styles.modalCloseButton}>
                 <Text style={styles.modalCloseButtonText}>{copy.close}</Text>
               </Pressable>
@@ -2028,6 +2301,7 @@ function FastingTab({
   remainingDays,
   progress,
   history,
+  historySections,
   kafarahDays,
   onAddDay,
   onUndoDay,
@@ -2039,6 +2313,7 @@ function FastingTab({
   remainingDays: number;
   progress: number;
   history: FastingDailySummary[];
+  historySections: Array<{ monthKey: string; days: FastingDailySummary[] }>;
   kafarahDays: number;
   onAddDay: () => void;
   onUndoDay: () => void;
@@ -2115,21 +2390,39 @@ function FastingTab({
             {copy.fastingEmpty}
           </Text>
         ) : (
-          activeHistory.map((entry) => (
-            <View key={entry.dayKey} style={styles.fastingLogCard}>
-              <Text style={[styles.fastingLogDate, isArabic(language) && styles.alignRight]}>
-                {new Date(`${entry.dayKey}T12:00:00`).toLocaleDateString(language === 'ar' ? 'ar' : 'en', {
-                  weekday: 'long',
-                  month: 'long',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              </Text>
-              <Text style={[styles.fastingLogCount, isArabic(language) && styles.alignRight]}>
-                {entry.totalCount} {copy.dayUnit}
-              </Text>
-            </View>
-          ))
+          historySections.map((section) => {
+            const monthDate = new Date(`${section.monthKey}-01T12:00:00`);
+            const monthLabel = monthDate.toLocaleDateString(language === 'ar' ? 'ar' : 'en', {
+              month: 'long',
+              year: 'numeric',
+            });
+
+            return (
+              <View key={section.monthKey} style={styles.fastingMonthSection}>
+                <Text style={[styles.fastingMonthTitle, isArabic(language) && styles.alignRight]}>
+                  {monthLabel}
+                </Text>
+                {section.days.map((entry) => (
+                  <View key={entry.dayKey} style={styles.fastingLogCard}>
+                    <Text style={[styles.fastingLogDate, isArabic(language) && styles.alignRight]}>
+                      {new Date(`${entry.dayKey}T12:00:00`).toLocaleDateString(
+                        language === 'ar' ? 'ar' : 'en',
+                        {
+                          weekday: 'long',
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric',
+                        }
+                      )}
+                    </Text>
+                    <Text style={[styles.fastingLogCount, isArabic(language) && styles.alignRight]}>
+                      {entry.totalCount} {copy.dayUnit}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })
         )}
 
         {kafarahDays > 0 ? (
@@ -2270,6 +2563,7 @@ function MoreTab({
   onEnableDailyReminder,
   onDisableDailyReminder,
   onNotificationTimeChange,
+  onSendTestReminder,
   target,
   onUpdateTarget,
   defaultDailyAddDays,
@@ -2306,6 +2600,7 @@ function MoreTab({
   onEnableDailyReminder: () => void;
   onDisableDailyReminder: () => void;
   onNotificationTimeChange: (hour: number, minute: number) => Promise<void>;
+  onSendTestReminder: () => Promise<void>;
   target: PrayerCounts;
   onUpdateTarget: (setup: OnboardingSetup) => void;
   defaultDailyAddDays: number;
@@ -2481,104 +2776,109 @@ function MoreTab({
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
-          {copy.accountTitle}
-        </Text>
-        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-          {authConfigured ? copy.accountHint : copy.authNeedsSetup}
-        </Text>
-
-        <View style={styles.accountCard}>
-          <View style={styles.accountStatusHeader}>
-            <View
-              style={[
-                styles.accountStatusDot,
-                authConfigured ? styles.accountStatusDotReady : styles.accountStatusDotNotReady,
-              ]}
-            />
-            <Text style={[styles.accountStatusLine, isArabic(language) && styles.alignRight]}>
-              {copy.authConfiguredLabel}: {authConfigured ? copy.authReady : copy.authNotReady}
-            </Text>
-          </View>
-          {authLoading ? (
-            <View style={styles.accountLoadingRow}>
-              <ActivityIndicator color={COLORS.lightGold} />
-              <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
-                {copy.accountHint}
-              </Text>
-            </View>
-          ) : accountProfile ? (
-            <>
-              <Text style={[styles.accountName, isArabic(language) && styles.alignRight]}>
-                {accountProfile.name}
-              </Text>
-              <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
-                {copy.connectedAs}: {accountProfile.email || accountProfile.provider}
-              </Text>
-              <Text style={[styles.accountMeta, isArabic(language) && styles.alignRight]}>
-                {copy.authComingSoon}
-              </Text>
-              <Pressable onPress={onSignOut} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>{copy.signOut}</Text>
-              </Pressable>
-            </>
-          ) : (
-            <>
-              <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
-                {copy.sharingReadyHint}
-              </Text>
-              <View style={styles.authButtons}>
-                <TouchableOpacity
-                  onPress={onGoogleSignIn}
-                  activeOpacity={0.85}
-                  style={styles.oauthButtonPrimary}
-                >
-                  <View style={styles.oauthButtonRow}>
-                    {authBusyProvider === 'google' ? (
-                      <ActivityIndicator color={COLORS.nightBlue} />
-                    ) : (
-                      <Text style={styles.oauthButtonBrandPrimary}>G</Text>
-                    )}
-                    <Text style={styles.oauthButtonPrimaryText}>{copy.connectGoogle}</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={onFacebookSignIn}
-                  activeOpacity={0.85}
-                  style={styles.oauthButtonSecondary}
-                >
-                  <View style={styles.oauthButtonRow}>
-                    {authBusyProvider === 'facebook' ? (
-                      <ActivityIndicator color={COLORS.cream} />
-                    ) : (
-                      <Text style={styles.oauthButtonBrandSecondary}>f</Text>
-                    )}
-                    <Text style={styles.oauthButtonSecondaryText}>{copy.connectFacebook}</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-
-          {authError ? (
-            <Text style={[styles.accountError, isArabic(language) && styles.alignRight]}>
-              {authError}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
           {copy.settingsTitle}
         </Text>
-        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-          {copy.languageHint}
-        </Text>
-        <View style={styles.settingsRow}>
-          <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+
+        <View style={styles.settingsPanel}>
+          <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
+            {copy.accountTitle}
+          </Text>
+          <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
+            {authConfigured ? copy.accountHint : copy.authNeedsSetup}
+          </Text>
+          <View style={styles.accountCard}>
+            <View style={styles.accountStatusHeader}>
+              <View
+                style={[
+                  styles.accountStatusDot,
+                  authConfigured ? styles.accountStatusDotReady : styles.accountStatusDotNotReady,
+                ]}
+              />
+              <Text style={[styles.accountStatusLine, isArabic(language) && styles.alignRight]}>
+                {copy.authConfiguredLabel}: {authConfigured ? copy.authReady : copy.authNotReady}
+              </Text>
+            </View>
+            {authLoading ? (
+              <View style={styles.accountLoadingRow}>
+                <ActivityIndicator color={COLORS.lightGold} />
+                <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
+                  {copy.accountHint}
+                </Text>
+              </View>
+            ) : accountProfile ? (
+              <>
+                <Text style={[styles.accountName, isArabic(language) && styles.alignRight]}>
+                  {accountProfile.name}
+                </Text>
+                <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
+                  {copy.connectedAs}: {accountProfile.email || accountProfile.provider}
+                </Text>
+                <Text style={[styles.accountMeta, isArabic(language) && styles.alignRight]}>
+                  {copy.authComingSoon}
+                </Text>
+                <Pressable onPress={onSignOut} style={styles.secondaryButton}>
+                  <Text style={styles.secondaryButtonText}>{copy.signOut}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
+                  {copy.sharingReadyHint}
+                </Text>
+                <View style={styles.authButtons}>
+                  <TouchableOpacity
+                    onPress={onGoogleSignIn}
+                    activeOpacity={0.85}
+                    style={styles.oauthButtonPrimary}
+                  >
+                    <View style={styles.oauthButtonRow}>
+                      {authBusyProvider === 'google' ? (
+                        <ActivityIndicator color={COLORS.nightBlue} />
+                      ) : (
+                        <Text style={styles.oauthButtonBrandPrimary}>G</Text>
+                      )}
+                      <Text style={styles.oauthButtonPrimaryText}>{copy.connectGoogle}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={onFacebookSignIn}
+                    activeOpacity={0.85}
+                    style={styles.oauthButtonSecondary}
+                  >
+                    <View style={styles.oauthButtonRow}>
+                      {authBusyProvider === 'facebook' ? (
+                        <ActivityIndicator color={COLORS.cream} />
+                      ) : (
+                        <Text style={styles.oauthButtonBrandSecondary}>f</Text>
+                      )}
+                      <Text style={styles.oauthButtonSecondaryText}>{copy.connectFacebook}</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {authError ? (
+              <Text style={[styles.accountError, isArabic(language) && styles.alignRight]}>
+                {authError}
+              </Text>
+            ) : null}
+          </View>
+
+          <View style={styles.settingsDivider} />
+
+          <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
             {copy.languageTitle}
           </Text>
-          <LanguageToggle language={language} onChange={onLanguageChange} />
+          <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+            {copy.languageHint}
+          </Text>
+          <View style={styles.settingsRow}>
+            <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+              {copy.languageTitle}
+            </Text>
+            <LanguageToggle language={language} onChange={onLanguageChange} />
+          </View>
         </View>
       </View>
 
@@ -2589,35 +2889,59 @@ function MoreTab({
         <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
           {copy.targetSettingsHint}
         </Text>
-        <View style={styles.partnerCard}>
-          <View style={styles.notificationStatusRow}>
+        <View style={styles.settingsPanel}>
+          <View style={styles.partnerCard}>
+            <View style={styles.notificationStatusRow}>
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.currentTargetLabel}
+              </Text>
+              <Text style={styles.notificationTimeValue}>
+                {currentTargetDays} {copy.currentTargetDaysLabel}
+              </Text>
+            </View>
             <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-              {copy.currentTargetLabel}
+              {copy.manualDaysLabel}
             </Text>
-            <Text style={styles.notificationTimeValue}>
-              {currentTargetDays} {copy.currentTargetDaysLabel}
-            </Text>
+            <TextInput
+              value={manualTargetDays}
+              onChangeText={(next) => setManualTargetDays(next.replace(/[^0-9.]/g, ''))}
+              style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor={COLORS.mutedText}
+            />
+            <Pressable onPress={handleSaveManualTarget} style={styles.shareButton}>
+              <Text style={styles.shareButtonText}>{copy.saveTarget}</Text>
+            </Pressable>
+            <Pressable onPress={() => setShowTargetModal(true)} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>{copy.recalculateTarget}</Text>
+            </Pressable>
           </View>
-          <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-            {copy.manualDaysLabel}
+
+          <View style={styles.settingsDivider} />
+
+          <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
+            {copy.defaultAddTitle}
           </Text>
-          <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-            {copy.manualDaysHint}
+          <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+            {copy.defaultAddHint}
           </Text>
-          <TextInput
-            value={manualTargetDays}
-            onChangeText={(next) => setManualTargetDays(next.replace(/[^0-9.]/g, ''))}
-            style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
-            keyboardType="number-pad"
-            placeholder="0"
-            placeholderTextColor={COLORS.mutedText}
-          />
-          <Pressable onPress={handleSaveManualTarget} style={styles.shareButton}>
-            <Text style={styles.shareButtonText}>{copy.saveTarget}</Text>
-          </Pressable>
-          <Pressable onPress={() => setShowTargetModal(true)} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>{copy.recalculateTarget}</Text>
-          </Pressable>
+          <View style={styles.partnerCard}>
+            <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+              {copy.defaultAddLabel}
+            </Text>
+            <TextInput
+              value={manualDefaultAddDays}
+              onChangeText={(next) => setManualDefaultAddDays(next.replace(/[^0-9.]/g, ''))}
+              style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
+              keyboardType="number-pad"
+              placeholder="1"
+              placeholderTextColor={COLORS.mutedText}
+            />
+            <Pressable onPress={handleSaveDefaultAddDays} style={styles.shareButton}>
+              <Text style={styles.shareButtonText}>{copy.defaultAddSave}</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -2628,95 +2952,99 @@ function MoreTab({
         <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
           {copy.notificationHint}
         </Text>
-        <View style={styles.partnerCard}>
-          <View style={styles.notificationStatusRow}>
-            <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-              {copy.notificationStatusLabel}
-            </Text>
-            <Text style={styles.notificationStatusValue}>
-              {notificationEnabled ? copy.notificationStatusOn : copy.notificationStatusOff}
-            </Text>
-          </View>
-          <View style={styles.notificationStatusRow}>
-            <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-              {copy.notificationTimeLabel}
-            </Text>
-            <Text style={styles.notificationTimeValue}>{formattedReminderTime}</Text>
-          </View>
-          <View style={styles.notificationTimeEditorRow}>
-            <View style={styles.notificationTimeField}>
+        <View style={styles.settingsPanel}>
+          <View style={styles.partnerCard}>
+            <View style={styles.notificationStatusRow}>
               <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-                {copy.notificationHourLabel}
+                {copy.notificationStatusLabel}
               </Text>
-              <TextInput
-                value={manualNotificationHour}
-                onChangeText={(next) => setManualNotificationHour(next.replace(/[^0-9]/g, ''))}
-                style={[
-                  styles.partnerInput,
-                  styles.notificationTimeInput,
-                  isArabic(language) && styles.notesInputArabic,
-                ]}
-                keyboardType="number-pad"
-                placeholder="21"
-                placeholderTextColor={COLORS.mutedText}
-                maxLength={2}
-              />
+              <Text style={styles.notificationStatusValue}>
+                {notificationEnabled ? copy.notificationStatusOn : copy.notificationStatusOff}
+              </Text>
             </View>
-            <View style={styles.notificationTimeField}>
+            <View style={styles.notificationStatusRow}>
               <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-                {copy.notificationMinuteLabel}
+                {copy.notificationTimeLabel}
               </Text>
-              <TextInput
-                value={manualNotificationMinute}
-                onChangeText={(next) => setManualNotificationMinute(next.replace(/[^0-9]/g, ''))}
-                style={[
-                  styles.partnerInput,
-                  styles.notificationTimeInput,
-                  isArabic(language) && styles.notesInputArabic,
-                ]}
-                keyboardType="number-pad"
-                placeholder="00"
-                placeholderTextColor={COLORS.mutedText}
-                maxLength={2}
-              />
+              <Text style={styles.notificationTimeValue}>{formattedReminderTime}</Text>
             </View>
+            <View style={styles.notificationTimeEditorRow}>
+              <View style={styles.notificationTimeField}>
+                <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.notificationHourLabel}
+                </Text>
+                <TextInput
+                  value={manualNotificationHour}
+                  onChangeText={(next) => setManualNotificationHour(next.replace(/[^0-9]/g, ''))}
+                  style={[
+                    styles.partnerInput,
+                    styles.notificationTimeInput,
+                    isArabic(language) && styles.notesInputArabic,
+                  ]}
+                  keyboardType="number-pad"
+                  placeholder="21"
+                  placeholderTextColor={COLORS.mutedText}
+                  maxLength={2}
+                />
+              </View>
+              <View style={styles.notificationTimeField}>
+                <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.notificationMinuteLabel}
+                </Text>
+                <TextInput
+                  value={manualNotificationMinute}
+                  onChangeText={(next) => setManualNotificationMinute(next.replace(/[^0-9]/g, ''))}
+                  style={[
+                    styles.partnerInput,
+                    styles.notificationTimeInput,
+                    isArabic(language) && styles.notesInputArabic,
+                  ]}
+                  keyboardType="number-pad"
+                  placeholder="00"
+                  placeholderTextColor={COLORS.mutedText}
+                  maxLength={2}
+                />
+              </View>
+            </View>
+            <Pressable onPress={handleSaveReminderTime} style={styles.shareButton}>
+              <Text style={styles.shareButtonText}>{copy.notificationSaveTime}</Text>
+            </Pressable>
+            <Pressable onPress={onSendTestReminder} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>{copy.notificationTestReminder}</Text>
+            </Pressable>
+            <Pressable
+              onPress={notificationEnabled ? onDisableDailyReminder : onEnableDailyReminder}
+              style={notificationEnabled ? styles.secondaryButton : styles.shareButton}
+            >
+              <Text style={notificationEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
+                {notificationEnabled ? copy.disableNotification : copy.enableNotification}
+              </Text>
+            </Pressable>
           </View>
-          <Pressable onPress={handleSaveReminderTime} style={styles.shareButton}>
-            <Text style={styles.shareButtonText}>{copy.notificationSaveTime}</Text>
-          </Pressable>
-          <Pressable
-            onPress={notificationEnabled ? onDisableDailyReminder : onEnableDailyReminder}
-            style={notificationEnabled ? styles.secondaryButton : styles.shareButton}
-          >
-            <Text style={notificationEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
-              {notificationEnabled ? copy.disableNotification : copy.enableNotification}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
-          {copy.defaultAddTitle}
-        </Text>
-        <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-          {copy.defaultAddHint}
-        </Text>
-        <View style={styles.partnerCard}>
-          <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-            {copy.defaultAddLabel}
+          <View style={styles.settingsDivider} />
+
+          <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
+            {copy.accountabilityTitle}
           </Text>
-          <TextInput
-            value={manualDefaultAddDays}
-            onChangeText={(next) => setManualDefaultAddDays(next.replace(/[^0-9.]/g, ''))}
-            style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
-            keyboardType="number-pad"
-            placeholder="1"
-            placeholderTextColor={COLORS.mutedText}
-          />
-          <Pressable onPress={handleSaveDefaultAddDays} style={styles.shareButton}>
-            <Text style={styles.shareButtonText}>{copy.defaultAddSave}</Text>
-          </Pressable>
+          <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+            {copy.accountabilityHint}
+          </Text>
+          <View style={styles.partnerCard}>
+            <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+              {copy.partnerNameLabel}
+            </Text>
+            <TextInput
+              value={accountabilityPartnerName}
+              onChangeText={onAccountabilityPartnerNameChange}
+              style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
+              placeholder={copy.partnerNamePlaceholder}
+              placeholderTextColor={COLORS.mutedText}
+            />
+            <Pressable onPress={handleShareProgress} style={styles.shareButton}>
+              <Text style={styles.shareButtonText}>{copy.shareProgress}</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -2727,120 +3055,105 @@ function MoreTab({
         <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
           {copy.fastingSettingsHint}
         </Text>
-        <View style={styles.partnerCard}>
-          <Pressable
-            onPress={() => onFastingEnabledChange(!fastingEnabled)}
-            style={fastingEnabled ? styles.secondaryButton : styles.shareButton}
-          >
-            <Text style={fastingEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
-              {fastingEnabled ? copy.fastingDisable : copy.fastingEnable}
-            </Text>
-          </Pressable>
-          {fastingEnabled ? (
-            <>
-              <View style={styles.notificationStatusRow}>
+        <View style={styles.advancedSettingsPanel}>
+          <View style={styles.partnerCard}>
+            <Pressable
+              onPress={() => onFastingEnabledChange(!fastingEnabled)}
+              style={fastingEnabled ? styles.secondaryButton : styles.shareButton}
+            >
+              <Text style={fastingEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
+                {fastingEnabled ? copy.fastingDisable : copy.fastingEnable}
+              </Text>
+            </Pressable>
+            {fastingEnabled ? (
+              <>
+                <View style={styles.notificationStatusRow}>
+                  <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                    {copy.fastingCompleted}
+                  </Text>
+                  <Text style={styles.notificationTimeValue}>{fastingCompletedDays}</Text>
+                </View>
                 <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-                  {copy.fastingCompleted}
+                  {copy.fastingTargetLabel}
                 </Text>
-                <Text style={styles.notificationTimeValue}>{fastingCompletedDays}</Text>
-              </View>
-              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-                {copy.fastingTargetLabel}
-              </Text>
-              <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-                {copy.fastingTargetHint}
-              </Text>
-              <TextInput
-                value={manualFastingTargetDays}
-                onChangeText={(next) => setManualFastingTargetDays(next.replace(/[^0-9.]/g, ''))}
-                style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={COLORS.mutedText}
-              />
-              <Pressable onPress={handleSaveFastingTarget} style={styles.shareButton}>
-                <Text style={styles.shareButtonText}>{copy.fastingSaveTarget}</Text>
-              </Pressable>
-              <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
-                {copy.kafarahTitle}
-              </Text>
-              <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-                {copy.kafarahHint}
-              </Text>
-              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-                {copy.kafarahEligibleDaysLabel}
-              </Text>
-              <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-                {copy.kafarahEligibleDaysHint}
-              </Text>
-              <TextInput
-                value={manualFastingKafarahDays}
-                onChangeText={(next) => setManualFastingKafarahDays(next.replace(/[^0-9.]/g, ''))}
-                style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={COLORS.mutedText}
-              />
-              <Pressable onPress={handleSaveFastingKafarahDays} style={styles.shareButton}>
-                <Text style={styles.shareButtonText}>{copy.kafarahSave}</Text>
-              </Pressable>
-              <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-                {copy.kafarahTrackHint}
-              </Text>
-            </>
-          ) : null}
+                <TextInput
+                  value={manualFastingTargetDays}
+                  onChangeText={(next) => setManualFastingTargetDays(next.replace(/[^0-9.]/g, ''))}
+                  style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={COLORS.mutedText}
+                />
+                <Pressable onPress={handleSaveFastingTarget} style={styles.shareButton}>
+                  <Text style={styles.shareButtonText}>{copy.fastingSaveTarget}</Text>
+                </Pressable>
+
+                <View style={styles.settingsDivider} />
+
+                <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
+                  {copy.kafarahTitle}
+                </Text>
+                <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+                  {copy.kafarahHint}
+                </Text>
+                <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.kafarahEligibleDaysLabel}
+                </Text>
+                <TextInput
+                  value={manualFastingKafarahDays}
+                  onChangeText={(next) => setManualFastingKafarahDays(next.replace(/[^0-9.]/g, ''))}
+                  style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={COLORS.mutedText}
+                />
+                <Pressable onPress={handleSaveFastingKafarahDays} style={styles.shareButton}>
+                  <Text style={styles.shareButtonText}>{copy.kafarahSave}</Text>
+                </Pressable>
+                <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+                  {copy.kafarahTrackHint}
+                </Text>
+              </>
+            ) : null}
+          </View>
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>
-          {copy.accountabilityTitle}
+          {copy.backupTitle}
         </Text>
         <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-          {copy.accountabilityHint}
+          {copy.backupHint}
         </Text>
-        <View style={styles.partnerCard}>
-          <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-            {copy.partnerNameLabel}
+        <View style={styles.advancedSettingsPanel}>
+          <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
+            {copy.notesTitle}
           </Text>
           <TextInput
-            value={accountabilityPartnerName}
-            onChangeText={onAccountabilityPartnerNameChange}
-            style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
-            placeholder={copy.partnerNamePlaceholder}
+            multiline
+            value={notes}
+            onChangeText={onNotesChange}
+            style={[styles.notesInput, isArabic(language) && styles.notesInputArabic]}
+            placeholder={copy.notesPlaceholder}
             placeholderTextColor={COLORS.mutedText}
           />
-          <Pressable onPress={handleShareProgress} style={styles.shareButton}>
-            <Text style={styles.shareButtonText}>{copy.shareProgress}</Text>
-          </Pressable>
-        </View>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>{copy.notesTitle}</Text>
-        <TextInput
-          multiline
-          value={notes}
-          onChangeText={onNotesChange}
-          style={[styles.notesInput, isArabic(language) && styles.notesInputArabic]}
-          placeholder={copy.notesPlaceholder}
-          placeholderTextColor={COLORS.mutedText}
-        />
-      </View>
+          <View style={styles.settingsDivider} />
 
-      <View style={styles.backupSection}>
-        <Text style={[styles.backupTitle, isArabic(language) && styles.alignRight]}>{copy.backupTitle}</Text>
-        <Text style={[styles.backupHint, isArabic(language) && styles.alignRight]}>{copy.backupHint}</Text>
-        <View style={styles.backupStatus}>
-          <Text style={styles.backupStatusLabel}>{copy.autoBackup}:</Text>
-          <Text style={styles.backupStatusText}>{copy.enabled}</Text>
+          <View style={styles.backupStatus}>
+            <Text style={styles.backupStatusLabel}>{copy.autoBackup}:</Text>
+            <Text style={styles.backupStatusText}>{copy.enabled}</Text>
+          </View>
+          <View style={styles.backupButtonsRow}>
+            <Pressable onPress={handleExport} style={styles.backupButton}>
+              <Text style={styles.backupButtonText}>{copy.exportBackup}</Text>
+            </Pressable>
+            <Pressable onPress={handleImport} style={styles.backupButton}>
+              <Text style={styles.backupButtonText}>{copy.importBackup}</Text>
+            </Pressable>
+          </View>
         </View>
-        <Pressable onPress={handleExport} style={styles.backupButton}>
-          <Text style={styles.backupButtonText}>{copy.exportBackup}</Text>
-        </Pressable>
-        <Pressable onPress={handleImport} style={styles.backupButton}>
-          <Text style={styles.backupButtonText}>{copy.importBackup}</Text>
-        </Pressable>
       </View>
     </>
   );
@@ -2851,7 +3164,6 @@ function ProgressOverview({
   totals,
   progress,
   language,
-  consistency,
 }: {
   copy: CopyBlock;
   totals: Totals;
@@ -2864,13 +3176,7 @@ function ProgressOverview({
     finishDate: Date | null;
   };
   language: AppLanguage;
-  consistency: {
-    days: DailyActivitySummary[];
-    activeDays: number;
-  };
 }) {
-  const consistencyLabel = copy.consistencySummary.replace('{count}', String(consistency.activeDays));
-
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>{copy.progressTitle}</Text>
@@ -2911,45 +3217,6 @@ function ProgressOverview({
           </View>
         </View>
         <ProgressStat label={copy.finish} value={formatFinishDate(progress.finishDate, copy.needHistory)} />
-        <View style={styles.consistencyCard}>
-          <View style={styles.consistencyHeader}>
-            <Text style={[styles.consistencyTitle, isArabic(language) && styles.alignRight]}>
-              {copy.consistencyTitle}
-            </Text>
-            <Text style={styles.consistencyRange}>{copy.last7Days}</Text>
-          </View>
-          <Text style={[styles.consistencyBody, isArabic(language) && styles.alignRight]}>
-            {consistencyLabel}
-          </Text>
-          <View style={styles.consistencyStrip}>
-            {consistency.days.map((day) => {
-              const date = new Date(`${day.dayKey}T12:00:00`);
-              const label = date.toLocaleDateString(language === 'ar' ? 'ar' : 'en', {
-                weekday: 'narrow',
-              });
-              const isActive = day.totalCount > 0;
-
-              return (
-                <View key={day.dayKey} style={styles.consistencyDay}>
-                  <View
-                    style={[
-                      styles.consistencyPill,
-                      isActive ? styles.consistencyPillActive : styles.consistencyPillIdle,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.consistencyDayLabel,
-                      isActive && styles.consistencyDayLabelActive,
-                    ]}
-                  >
-                    {label}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
       </View>
     </View>
   );
@@ -3830,63 +4097,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  consistencyCard: {
-    backgroundColor: 'rgba(247, 243, 234, 0.05)',
-    borderRadius: 16,
-    padding: 14,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: COLORS.lightGold + '12',
-  },
-  consistencyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  consistencyTitle: {
-    color: COLORS.cream,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  consistencyRange: {
-    color: COLORS.mutedText,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  consistencyBody: {
-    color: COLORS.mutedText,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  consistencyStrip: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  consistencyDay: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 6,
-  },
-  consistencyPill: {
-    width: '100%',
-    height: 10,
-    borderRadius: 999,
-  },
-  consistencyPillActive: {
-    backgroundColor: COLORS.gold,
-  },
-  consistencyPillIdle: {
-    backgroundColor: COLORS.progressTrack,
-  },
-  consistencyDayLabel: {
-    color: COLORS.mutedText,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  consistencyDayLabelActive: {
-    color: COLORS.cream,
-  },
   dayActionCard: {
     backgroundColor: 'rgba(20, 67, 42, 0.92)',
     borderRadius: 22,
@@ -4192,6 +4402,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
+  prayerBreakdownActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  historyAdjustButton: {
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  historyAdjustButtonAdd: {
+    backgroundColor: COLORS.forestGreen,
+    borderColor: COLORS.lightGold + '22',
+  },
+  historyAdjustButtonUndo: {
+    backgroundColor: COLORS.inputBg,
+    borderColor: COLORS.gold + '22',
+  },
+  historyAdjustButtonText: {
+    color: COLORS.cream,
+    fontSize: 12,
+    fontWeight: '800',
+  },
   modalCloseButton: {
     marginTop: 8,
     backgroundColor: COLORS.forestGreen,
@@ -4272,6 +4506,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gold + '14',
   },
+  fastingMonthSection: {
+    gap: 10,
+  },
+  fastingMonthTitle: {
+    color: COLORS.lightGold,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
   fastingLogDate: {
     color: COLORS.cream,
     fontSize: 14,
@@ -4322,6 +4565,36 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 14,
+  },
+  settingsPanel: {
+    backgroundColor: COLORS.prayerCardBg,
+    borderRadius: 22,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '14',
+  },
+  advancedSettingsPanel: {
+    backgroundColor: COLORS.inputBg + 'CC',
+    borderRadius: 22,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '10',
+  },
+  settingsPanelTitle: {
+    color: COLORS.cream,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  settingsCompactHint: {
+    color: COLORS.mutedText,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  settingsDivider: {
+    height: 1,
+    backgroundColor: COLORS.gold + '12',
   },
   settingsLabel: {
     color: COLORS.cream,
@@ -4521,6 +4794,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  backupButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   backupStatusLabel: {
     color: COLORS.gold,
     fontSize: 12,
@@ -4537,6 +4814,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: COLORS.gold + '22',
+    flex: 1,
+    alignItems: 'center',
   },
   backupButtonText: {
     color: COLORS.cream,

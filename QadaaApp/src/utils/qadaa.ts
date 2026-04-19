@@ -32,11 +32,19 @@ export type FastingDailySummary = {
   totalCount: number;
 };
 
+export type FastingHistorySection = {
+  monthKey: string;
+  days: FastingDailySummary[];
+};
+
 export type AppState = {
   target: PrayerCounts;
   completed: PrayerCounts;
   todayCompleted: PrayerCounts;
   log: PrayerLogEntry[];
+  profileName: string;
+  profileAge: string;
+  profileEmail: string;
   includeWitr: boolean;
   notes: string;
   language: AppLanguage;
@@ -89,6 +97,9 @@ export const defaultAppState = (): AppState => ({
   completed: emptyCounts(),
   todayCompleted: emptyCounts(),
   log: [],
+  profileName: '',
+  profileAge: '',
+  profileEmail: '',
   includeWitr: false,
   notes: 'Shafi‘i profile — simple counting first, detailed fiqh options later.',
   language: 'en',
@@ -159,11 +170,12 @@ export const decrementCount = (counts: PrayerCounts, key: PrayerKey): PrayerCoun
 export const createLogEntry = (
   prayer: PrayerKey,
   source: PrayerLogEntry['source'] = 'quick_add',
-  batchId?: string
+  batchId?: string,
+  createdAt?: string
 ): PrayerLogEntry => ({
   id: `${prayer}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   prayer,
-  createdAt: new Date().toISOString(),
+  createdAt: createdAt ?? new Date().toISOString(),
   source,
   batchId,
 });
@@ -174,6 +186,25 @@ export const applyPrayerCompletion = (state: AppState, prayer: PrayerKey): AppSt
   todayCompleted: incrementCount(state.todayCompleted, prayer),
   log: [createLogEntry(prayer), ...state.log],
 });
+
+export const applyPrayerCompletionForDay = (
+  state: AppState,
+  prayer: PrayerKey,
+  dayKey: string,
+  now = new Date()
+): AppState => {
+  const todayKey = formatDayKey(now);
+  const createdAt =
+    dayKey === todayKey ? now.toISOString() : new Date(`${dayKey}T12:00:00`).toISOString();
+
+  return {
+    ...state,
+    completed: incrementCount(state.completed, prayer),
+    todayCompleted:
+      dayKey === todayKey ? incrementCount(state.todayCompleted, prayer) : state.todayCompleted,
+    log: [createLogEntry(prayer, 'manual_adjust', undefined, createdAt), ...state.log],
+  };
+};
 
 export const applyFullDayCompletion = (state: AppState, days = 1): AppState => {
   const nextCompleted = { ...state.completed };
@@ -208,6 +239,32 @@ export const rollbackPrayerCompletion = (state: AppState, prayer: PrayerKey): Ap
     ...state,
     completed: decrementCount(state.completed, prayer),
     todayCompleted: decrementCount(state.todayCompleted, prayer),
+    log: nextLog,
+  };
+};
+
+export const rollbackPrayerCompletionForDay = (
+  state: AppState,
+  prayer: PrayerKey,
+  dayKey: string,
+  now = new Date()
+): AppState => {
+  const logIndex = state.log.findIndex(
+    (entry) => entry.prayer === prayer && formatDayKey(new Date(entry.createdAt)) === dayKey
+  );
+
+  if (logIndex === -1) {
+    return state;
+  }
+
+  const todayKey = formatDayKey(now);
+  const nextLog = state.log.filter((_, index) => index !== logIndex);
+
+  return {
+    ...state,
+    completed: decrementCount(state.completed, prayer),
+    todayCompleted:
+      dayKey === todayKey ? decrementCount(state.todayCompleted, prayer) : state.todayCompleted,
     log: nextLog,
   };
 };
@@ -424,4 +481,23 @@ export const getRecentFastingActivity = (
   }
 
   return summaries;
+};
+
+export const groupFastingActivityByMonth = (
+  history: FastingDailySummary[]
+): FastingHistorySection[] => {
+  const monthMap = new Map<string, FastingDailySummary[]>();
+
+  for (const day of history) {
+    if (day.totalCount <= 0) continue;
+    const monthKey = day.dayKey.slice(0, 7);
+    const existing = monthMap.get(monthKey) ?? [];
+    existing.push(day);
+    monthMap.set(monthKey, existing);
+  }
+
+  return Array.from(monthMap.entries()).map(([monthKey, days]) => ({
+    monthKey,
+    days,
+  }));
 };

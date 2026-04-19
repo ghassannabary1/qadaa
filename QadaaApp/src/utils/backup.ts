@@ -51,18 +51,7 @@ export async function restoreBackup(): Promise<AppState | null> {
     }
     
     const backup: BackupData = JSON.parse(backupJson);
-    
-    // Clear current state
-    await AsyncStorage.setItem('qadaa-simple-v2', JSON.stringify({
-      target: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 },
-      completed: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 },
-      todayCompleted: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 },
-      log: [],
-      includeWitr: false,
-      notes: '',
-    }));
-    
-    // Restore from backup
+
     await AsyncStorage.setItem('qadaa-simple-v2', JSON.stringify(backup.state));
     
     console.log('✅ Backup restored successfully');

@@ -92,3 +92,20 @@ export async function cancelDailyReminderNotification(identifier?: string | null
   if (!identifier) return;
   await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => undefined);
 }
+
+export async function sendTestReminderNotification(copy: DailyReminderCopy) {
+  await ensureNotificationInfrastructure(copy);
+
+  return Notifications.scheduleNotificationAsync({
+    content: {
+      title: copy.title,
+      body: copy.body,
+      categoryIdentifier: DAILY_REMINDER_CATEGORY_ID,
+      data: {
+        kind: DAILY_REMINDER_KIND,
+        test: true,
+      },
+    },
+    trigger: null,
+  });
+}

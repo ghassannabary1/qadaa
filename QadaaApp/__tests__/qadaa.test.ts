@@ -2,6 +2,7 @@ import {
   applyFastingCompletion,
   applyFullDayCompletion,
   applyPrayerCompletion,
+  applyPrayerCompletionForDay,
   calculateKafarahPoorPeople,
   clearTodayPrayerProgress,
   countsFromMissedDays,
@@ -13,6 +14,7 @@ import {
   estimatePrayerPacePerDay,
   getRecentDailyActivity,
   groupLogEntriesByDay,
+  groupFastingActivityByMonth,
   incrementCount,
   latestLogEntries,
   PRAYERS_PER_QADAA_DAY,
@@ -21,6 +23,7 @@ import {
   rollbackFastingCompletion,
   rollbackFullDayCompletion,
   rollbackPrayerCompletion,
+  rollbackPrayerCompletionForDay,
   totalCounts,
 } from '../src/utils/qadaa';
 
@@ -48,6 +51,9 @@ describe('qadaa helpers', () => {
   it('builds a default app state', () => {
     const state = defaultAppState();
     expect(state.log).toEqual([]);
+    expect(state.profileName).toBe('');
+    expect(state.profileAge).toBe('');
+    expect(state.profileEmail).toBe('');
     expect(state.notes).toContain('Shafi');
     expect(state.language).toBe('en');
     expect(state.accountabilityPartnerName).toBe('');
@@ -145,6 +151,45 @@ describe('qadaa helpers', () => {
     expect(rolledBack.completed.isha).toBe(0);
     expect(rolledBack.todayCompleted.isha).toBe(0);
     expect(rolledBack.log).toHaveLength(0);
+  });
+
+  it('applies a prayer completion to a selected past day', () => {
+    const state = applyPrayerCompletionForDay(
+      defaultAppState(),
+      'dhuhr',
+      '2026-04-10',
+      new Date('2026-04-18T12:00:00.000Z')
+    );
+
+    expect(state.completed.dhuhr).toBe(1);
+    expect(state.todayCompleted.dhuhr).toBe(0);
+    expect(state.log[0].createdAt.slice(0, 10)).toBe('2026-04-10');
+    expect(state.log[0].source).toBe('manual_adjust');
+  });
+
+  it('rolls back a prayer completion from a selected day only', () => {
+    const state = {
+      ...defaultAppState(),
+      completed: { fajr: 1, dhuhr: 2, asr: 0, maghrib: 0, isha: 0 },
+      todayCompleted: { fajr: 1, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 },
+      log: [
+        { id: 'today-fajr', prayer: 'fajr', createdAt: '2026-04-18T08:00:00.000Z', source: 'quick_add' as const },
+        { id: 'past-dhuhr-2', prayer: 'dhuhr', createdAt: '2026-04-10T13:00:00.000Z', source: 'manual_adjust' as const },
+        { id: 'past-dhuhr-1', prayer: 'dhuhr', createdAt: '2026-04-10T12:00:00.000Z', source: 'quick_add' as const },
+      ],
+    };
+
+    const rolledBack = rollbackPrayerCompletionForDay(
+      state,
+      'dhuhr',
+      '2026-04-10',
+      new Date('2026-04-18T12:00:00.000Z')
+    );
+
+    expect(rolledBack.completed.dhuhr).toBe(1);
+    expect(rolledBack.todayCompleted.fajr).toBe(1);
+    expect(rolledBack.todayCompleted.dhuhr).toBe(0);
+    expect(rolledBack.log.map((entry) => entry.id)).toEqual(['today-fajr', 'past-dhuhr-1']);
   });
 
   it('applies and rolls back a fasting completion safely', () => {
@@ -351,5 +396,20 @@ describe('qadaa helpers', () => {
     expect(recent[1].totalCount).toBe(1);
     expect(recent[2].dayKey).toBe('2026-04-15');
     expect(recent[2].totalCount).toBe(0);
+  });
+
+  it('groups fasting activity into month sections', () => {
+    const sections = groupFastingActivityByMonth([
+      { dayKey: '2026-04-18', totalCount: 1 },
+      { dayKey: '2026-04-17', totalCount: 1 },
+      { dayKey: '2026-03-30', totalCount: 1 },
+      { dayKey: '2026-03-29', totalCount: 0 },
+    ]);
+
+    expect(sections).toHaveLength(2);
+    expect(sections[0].monthKey).toBe('2026-04');
+    expect(sections[0].days).toHaveLength(2);
+    expect(sections[1].monthKey).toBe('2026-03');
+    expect(sections[1].days).toHaveLength(1);
   });
 });
