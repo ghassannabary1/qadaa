@@ -1,4 +1,4 @@
-package com.anonymous.qadaa
+package com.ghassannabary.qadaa
 
 import android.os.Build
 import android.os.Bundle

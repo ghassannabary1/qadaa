@@ -28,7 +28,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>qadaa</string>
-          <string>com.anonymous.qadaa</string>
+          <string>com.ghassannabary.qadaa</string>
         </array>
       </dict>
     </array>

@@ -4,12 +4,12 @@
 
 ### 🎉 What's New
 
-#### Data Backup & Sync
-- ✅ **Automatic iCloud backup** (iOS) - syncs automatically every 30 seconds
+#### Data Backup & Export
+- ✅ **Automatic local backup snapshot** - saved in app storage every 30 seconds
 - ✅ **Auto-save to device storage** (iOS & Android) - always up to date
-- ✅ **Manual export/import** - share with friends, family, or backup manually
+- ✅ **Manual export/import** - user-controlled backup sharing and restore
 - ✅ **Backup status indicator** - shows "Auto-backup: Enabled" on home screen
-- ✅ **No cloud API dependencies** - simple, secure, no server costs
+- ✅ **No cloud API dependencies** - simple, local-first, no server costs
 
 #### Accessibility
 - ✅ ARIA labels on all buttons for screen readers
@@ -27,15 +27,13 @@
 - Input validation with non-numeric handling
 - Time format standardized to UTC
 - Auto-backup interval: 30 seconds (configurable)
-- Backup stored in AsyncStorage with iCloud sync (iOS)
+- Backup stored locally in AsyncStorage
 
 ### 📱 How to Backup
 
 #### Automatic Backup (Default)
-Your data auto-saves to:
-- iCloud Drive (iOS users)
-- Device storage (both platforms)
-- No action needed!
+Your data auto-saves to app storage on the device.
+Use export if you want a manually shareable backup.
 
 #### Manual Export
 1. Tap "Export Backup" button
@@ -53,7 +51,7 @@ Your data auto-saves to:
 - No cloud servers
 - No tracking
 - Open-source code
-- iCloud sync uses Apple's secure infrastructure
+- Backup stays local unless you choose to export it
 
 ### 🐛 Bug Fixes
 
@@ -64,7 +62,7 @@ Your data auto-saves to:
 
 ### ✅ Production Status
 
-The app is **production-ready** and **safe to release**.
+The app is approaching release readiness, but still needs final signing, privacy, and store-compliance steps.
 
 ---
 

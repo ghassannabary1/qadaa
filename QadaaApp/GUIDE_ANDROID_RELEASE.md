@@ -1,11 +1,28 @@
-# Android Release Build Guide
+# Android Release Guide
 
-## 📋 Step-by-Step Instructions
+This project is close to Play-ready, but you still need a real package name and a real release keystore before uploading.
 
-### Step 1: Create Keystore (Required for Google Play)
+## 1. Choose Your Final Package Name
+
+Right now the app still uses:
+
+`com.ghassannabary.qadaa`
+
+Before Google Play upload, replace it with your final package id in:
+
+- `/Users/ghassannabary/Projects/QadaaApp/app.json`
+- `/Users/ghassannabary/Projects/QadaaApp/android/app/build.gradle`
+
+Example:
+
+`com.ghassannabary.qadaa`
+
+## 2. Create a Release Keystore
+
+Run this from the project root:
 
 ```bash
-cd /Users/ghassannabary/Projects/android
+cd /Users/ghassannabary/Projects/QadaaApp/android
 keytool -genkey -v \
   -keystore qadaa-release-key.jks \
   -alias qadaa-release \
@@ -14,98 +31,87 @@ keytool -genkey -v \
   -validity 10000
 ```
 
-**When prompted:**
-- **First and Last Name:** Your name or company name
-- **Organization:** Your organization (optional)
-- **Organizational Unit:** Your department (optional)
-- **City/Locality:** Your city
-- **State/Province:** Your state
-- **Country:** US (or your country code)
+Keep the `.jks` file and passwords safe. If you lose them, you cannot update the Play Store app later.
 
-**⚠️ IMPORTANT:**
-- Save the keystore file (`qadaa-release-key.jks`) securely!
-- Never share it publicly
-- Keep the password safe
-- If you lose it, you can't update the app on Google Play
+## 3. Create `android/key.properties`
 
-### Step 2: Enter Keystore Password
+Create:
 
-Choose a strong password (mix of letters, numbers, symbols):
-- Example: `QadaaRelease2026!`
-- Remember it - you'll need it to build and update the app
+`/Users/ghassannabary/Projects/QadaaApp/android/key.properties`
 
-### Step 3: Build the APK
+With:
+
+```properties
+storeFile=qadaa-release-key.jks
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=qadaa-release
+keyPassword=YOUR_KEY_PASSWORD
+```
+
+This file is gitignored.
+
+## 4. Build a Release AAB
+
+From the project root:
 
 ```bash
-./build-apk.sh
+cd /Users/ghassannabary/Projects/QadaaApp/android
+./gradlew bundleRelease
 ```
 
-The script will:
-1. Find your keystore
-2. Sign the release build
-3. Create the APK file
-4. Output the location
+Output:
 
-### Step 4: Install on Device (for testing)
+`/Users/ghassannabary/Projects/QadaaApp/android/app/build/outputs/bundle/release/app-release.aab`
+
+For device testing APK:
 
 ```bash
-# Connect your Android device via USB
-adb install app/release/com.anonymous.qadaa-release.apk
+./gradlew assembleRelease
 ```
 
-### Step 5: Submit to Google Play
+Output:
 
-1. Download **Google Play Console** (https://play.google.com/console)
-2. Create a developer account ($25 one-time fee)
-3. Upload the APK/AAB from the build directory
-4. Fill out app store listing
-5. Submit for review
+`/Users/ghassannabary/Projects/QadaaApp/android/app/build/outputs/apk/release/app-release.apk`
 
-## 🎯 Build Outputs
+## 5. Test the Release Build
 
-After building, you'll find:
+Install the APK on a real Android phone and verify:
 
-```
-android/app/build/outputs/apk/release/
-├── com.anonymous.qadaa-release.apk    # Full APK (for internal testing)
-└── com.anonymous.qadaa-release-unaligned.apk
-```
+- onboarding
+- Arabic and English
+- prayer counting
+- fasting tracking
+- notification scheduling
+- external links
+- app icon and splash
 
-## 📱 AAB vs APK
+## 6. Prepare Play Console Requirements
 
-- **APK:** Android Package Kit (for internal testing, alpha/beta)
-- **AAB:** Android App Bundle (required for Google Play Store)
+Before upload, prepare:
 
-The build script will create the AAB for Google Play submission.
+- app name
+- short description
+- full description
+- icon
+- feature graphic
+- screenshots
+- privacy policy URL
+- data safety answers
+- support email
 
-## 🔒 Security Tips
+## 7. Current Code-Side Release Prep Already Done
 
-1. **Backup keystore:** Copy `.jks` file to external drive/encrypted cloud
-2. **Password security:** Store in password manager, not plain text
-3. **Never commit keystore:** Add `.jks` to `.gitignore`
-4. **Generate new key:** Only if you're rebuilding from scratch
+These are already improved in the repo:
 
-## 🚀 Quick Start
+- unnecessary Android storage permissions removed
+- release signing config now supports `android/key.properties`
+- release keystore files are ignored by git
 
-1. Run the keystore creation command above
-2. Enter your information
-3. Run `./build-apk.sh`
-4. Test on your device
-5. Submit to Google Play!
+## 8. Still Not Automatically Finished
 
-## 📞 Need Help?
+These still need your decision or account setup:
 
-Common issues:
-- "Keystore not found" → Run step 1 first
-- "Build failed" → Check Android SDK is installed
-- "Signing error" → Verify keystore password
-
----
-
-The script will guide you through the process. Just run:
-
-```bash
-./build-apk.sh
-```
-
-It will create everything needed! 🚀
+- final Android package name
+- release keystore creation
+- Play Console listing and policy forms
+- final production AAB test on device

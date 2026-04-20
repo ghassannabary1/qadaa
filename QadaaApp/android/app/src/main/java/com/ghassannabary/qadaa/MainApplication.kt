@@ -1,4 +1,4 @@
-package com.anonymous.qadaa
+package com.ghassannabary.qadaa
 
 import android.app.Application
 import android.content.res.Configuration

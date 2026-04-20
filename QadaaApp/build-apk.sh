@@ -1,53 +1,46 @@
 #!/bin/bash
-#
-# Build Android APK/AAB for Qadaa
-# This script creates a release build ready for Google Play Store
-#
 
-set -e
+set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ANDROID_DIR="$PROJECT_DIR/android"
+KEY_PROPERTIES_FILE="$ANDROID_DIR/key.properties"
+APP_BUNDLE_PATH="$ANDROID_DIR/app/build/outputs/bundle/release/app-release.aab"
+APK_PATH="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
 
-echo "🚀 Building Qadaa for Android..."
-echo "========================================="
+echo "Building Android release artifacts for Qadaa"
 echo ""
 
-# Check if keystore exists
-KEYSTORE_FILE="$ANDROID_DIR/qadaa-release-key.jks"
-
-if [ ! -f "$KEYSTORE_FILE" ]; then
-    echo "⚠️  No keystore found! You need to create one first."
-    echo ""
-    echo "To create a keystore:"
-    echo "  keytool -genkey -v -keystore $ANDROID_DIR/qadaa-release-key.jks"
-    echo "  -alias qadaa-release -keyalg RSA -keysize 2048 -validity 10000"
-    echo ""
-    echo "Enter your name, email, organization when prompted."
-    echo "Store this .jks file securely and backup it!"
-    echo ""
-    echo "Press Ctrl+C to cancel, or continue with a debug build for testing."
-    exit 1
+if [ ! -f "$KEY_PROPERTIES_FILE" ]; then
+  echo "Missing $KEY_PROPERTIES_FILE"
+  echo ""
+  echo "Create it with:"
+  echo "storeFile=qadaa-release-key.jks"
+  echo "storePassword=YOUR_STORE_PASSWORD"
+  echo "keyAlias=qadaa-release"
+  echo "keyPassword=YOUR_KEY_PASSWORD"
+  exit 1
 fi
 
-# Store password from file
-KEYSTORE_PASS=$(cat "$ANDROID_DIR/key.properties" | grep storePassword | cut -d'=' -f2)
-KEY_ALIAS=$(cat "$ANDROID_DIR/key.properties" | grep keyAlias | cut -d'=' -f2)
-
-echo "🔑 Keystore found: $KEYSTORE_FILE"
-echo "📦 Building release build..."
-echo ""
-
-# Build command (requires keystore)
 cd "$ANDROID_DIR"
-./gradlew assembleRelease -PkeyAlias=$KEY_ALIAS -PkeyPassword=$(cat "$ANDROID_DIR/key.properties" | grep keyPassword | cut -d'=' -f2) -PstorePassword=$KEYSTORE_PASS -PstoreFile=$KEYSTORE_FILE
+
+echo "Cleaning previous build artifacts..."
+./gradlew clean
 
 echo ""
-echo "✅ Build complete!"
-echo ""
-echo "APK location:"
-ls -lh "$ANDROID_DIR/app/build/outputs/apk/release/"
+echo "Building Play Store bundle (.aab)..."
+./gradlew bundleRelease
 
 echo ""
-echo "To install on device:"
-echo "  adb install <path-to-apk>"
+echo "Building release APK for device testing..."
+./gradlew assembleRelease
+
+echo ""
+echo "Done."
+echo ""
+echo "AAB:"
+echo "  $APP_BUNDLE_PATH"
+echo ""
+echo "APK:"
+echo "  $APK_PATH"
+

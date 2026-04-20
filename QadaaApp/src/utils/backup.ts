@@ -12,9 +12,8 @@ export const BACKUP_KEY = 'qadaa_backup';
 export const EXPORT_KEY = 'qadaa_export_file';
 
 /**
- * Create a backup of the current state
- * Auto-syncs to iCloud on iOS (automatic via system)
- * Saves to device storage on both platforms
+ * Create a local backup snapshot of the current state.
+ * This stays inside app storage unless the user explicitly exports it.
  */
 export async function createBackup(state: AppState): Promise<BackupData | null> {
   try {
@@ -24,13 +23,13 @@ export async function createBackup(state: AppState): Promise<BackupData | null> 
       version: '1.0',
     };
     
-    // Save to AsyncStorage (automatic on both iOS/Android)
+    // Save locally inside app storage.
     await AsyncStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
     
     // Create shareable export file
     await saveExportFile(JSON.stringify(backup, null, 2));
     
-    console.log('✅ Backup created and synced automatically');
+    console.log('✅ Local backup snapshot created');
     return backup;
   } catch (error) {
     console.warn('Backup creation failed', error);

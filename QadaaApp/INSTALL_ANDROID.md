@@ -73,7 +73,7 @@ eas-cli:build:fetch <build-id>
 
 4. **Install on Device**
    ```bash
-   adb install app/release/com.anonymous.qadaa-release.apk
+   adb install app/build/outputs/apk/release/app-release.apk
    ```
 
 ## 🎯 Recommendation
