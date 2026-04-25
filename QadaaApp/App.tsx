@@ -84,6 +84,8 @@ const AUTO_BACKUP_INTERVAL = 30 * 1000;
 const DEFAULT_NOTES = defaultAppState().notes;
 const APP_BACKGROUND = require('./assets/patterns/backgrounds/app-islamic-floral-background.png');
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+const DEVELOPER_NAME = 'Ghassan Nabary';
+const DEVELOPER_EMAIL = 'ghassan.nabary95@gmail.com';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -284,6 +286,7 @@ type CopyBlock = {
   notificationStatusOff: string;
   notificationSavedTimeLabel: string;
   notificationDraftTimeLabel: string;
+  notificationTimeHelp: string;
   defaultAddTitle: string;
   defaultAddHint: string;
   defaultAddLabel: string;
@@ -519,6 +522,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationStatusOff: 'Off',
     notificationSavedTimeLabel: 'Saved time',
     notificationDraftTimeLabel: 'New time',
+    notificationTimeHelp: 'Save the time here, then turn the reminder on if it is off.',
     defaultAddTitle: 'Finish estimate',
     defaultAddHint:
       'Choose how many qadaa days you hope to finish in a normal day. This changes the estimate only. The main button still counts one day at a time.',
@@ -759,6 +763,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationStatusOff: 'متوقف',
     notificationSavedTimeLabel: 'الوقت المحفوظ',
     notificationDraftTimeLabel: 'الوقت الجديد',
+    notificationTimeHelp: 'احفظ الوقت هنا، ثم فعّل التذكير إن كان متوقفاً.',
     defaultAddTitle: 'تقدير الانتهاء',
     defaultAddHint:
       'اختر عدد أيام القضاء التي ترجّح إنجازها في يوم عادي. هذا يغيّر تقدير الانتهاء فقط، أما الزر الرئيسي فيبقى يوماً واحداً كل مرة.',
@@ -2346,9 +2351,6 @@ function MainApp({
       finishDate,
     };
   }, [state.defaultDailyAddDays, state.log, totals]);
-  const developerName = 'Ghassan Nabary';
-  const developerEmail = 'ghassan.nabary95@gmail.com';
-
   useEffect(() => {
     if (!state.fastingEnabled && activeTab === 'fasting') {
       setActiveTab('home');
@@ -3535,6 +3537,9 @@ function MoreTab({
               <Text style={[styles.notificationPreviewText, isArabic(language) && styles.alignRight]}>
                 {formattedDraftReminderTime ?? copy.notificationTimeInvalid}
               </Text>
+              <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+                {copy.notificationTimeHelp}
+              </Text>
             </View>
 
             <View style={styles.notificationActionsColumn}>
@@ -3684,18 +3689,18 @@ function MoreTab({
                 {copy.developerNameLabel}
               </Text>
               <Text style={[styles.developerValue, isArabic(language) && styles.alignRight]}>
-                {developerName}
+                {DEVELOPER_NAME}
               </Text>
             </View>
             <Pressable
-              onPress={() => Linking.openURL(`mailto:${developerEmail}`)}
+              onPress={() => Linking.openURL(`mailto:${DEVELOPER_EMAIL}`)}
               style={styles.developerEmailButton}
             >
               <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
                 {copy.developerEmailLabel}
               </Text>
               <Text style={[styles.developerEmailValue, isArabic(language) && styles.alignRight]}>
-                {developerEmail}
+                {DEVELOPER_EMAIL}
               </Text>
             </Pressable>
             <View style={styles.versionRow}>
