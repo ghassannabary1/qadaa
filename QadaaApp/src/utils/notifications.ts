@@ -45,12 +45,25 @@ export async function ensureNotificationInfrastructure(copy: DailyReminderCopy) 
 
 export async function requestNotificationPermissionAsync() {
   const existing = await Notifications.getPermissionsAsync();
-  if (existing.granted) {
+  const existingGranted =
+    existing.granted ||
+    (Platform.OS === 'ios' &&
+      (existing.ios?.status === Notifications.IosAuthorizationStatus.AUTHORIZED ||
+        existing.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL ||
+        existing.ios?.status === Notifications.IosAuthorizationStatus.EPHEMERAL));
+
+  if (existingGranted) {
     return true;
   }
 
   const requested = await Notifications.requestPermissionsAsync();
-  return requested.granted;
+  return (
+    requested.granted ||
+    (Platform.OS === 'ios' &&
+      (requested.ios?.status === Notifications.IosAuthorizationStatus.AUTHORIZED ||
+        requested.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL ||
+        requested.ios?.status === Notifications.IosAuthorizationStatus.EPHEMERAL))
+  );
 }
 
 export async function scheduleDailyReminderNotification({
@@ -106,6 +119,11 @@ export async function sendTestReminderNotification(copy: DailyReminderCopy) {
         test: true,
       },
     },
-    trigger: null,
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 2,
+      repeats: false,
+      ...(Platform.OS === 'android' ? { channelId: DAILY_REMINDER_CHANNEL_ID } : {}),
+    },
   });
 }

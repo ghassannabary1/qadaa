@@ -380,6 +380,7 @@ export const estimateCompletionDate = (
   now = new Date()
 ) => {
   if (remainingPrayers <= 0) return now;
+  if (plannedDaysPerDay <= 0) return null;
   const safePlannedDaysPerDay = Math.max(1, plannedDaysPerDay);
   const daysLeft = Math.ceil(remainingPrayers / (PRAYERS_PER_QADAA_DAY * safePlannedDaysPerDay));
   const finishDate = new Date(now);
@@ -394,6 +395,7 @@ export const estimateCompletionDays = (
   _now = new Date()
 ) => {
   if (remainingPrayers <= 0) return 0;
+  if (plannedDaysPerDay <= 0) return null;
   const safePlannedDaysPerDay = Math.max(1, plannedDaysPerDay);
   return remainingPrayers / (PRAYERS_PER_QADAA_DAY * safePlannedDaysPerDay);
 };

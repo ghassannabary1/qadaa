@@ -341,6 +341,14 @@ describe('qadaa helpers', () => {
     expect(daysLeft).toBe(1);
   });
 
+  it('turns off the finish estimate when planned daily pace is 0', () => {
+    const daysLeft = estimateCompletionDays(10, [], 0, new Date('2026-04-11T12:00:00.000Z'));
+    const finishDate = estimateCompletionDate(10, [], 0, new Date('2026-04-11T12:00:00.000Z'));
+
+    expect(daysLeft).toBeNull();
+    expect(finishDate).toBeNull();
+  });
+
   it('estimates missed days from a simple Shafii setup', () => {
     expect(
       estimateMissedDaysFromShafiiSetup({

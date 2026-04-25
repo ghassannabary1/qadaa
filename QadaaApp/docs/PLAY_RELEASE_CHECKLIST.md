@@ -6,11 +6,14 @@
 - [x] Replace anonymous package id with `com.ghassannabary.qadaa`
 - [x] Make release signing require a real keystore
 - [x] Disable default Android backup until data policy is intentional
+- [x] Keep release secrets out of git
+- [x] Add a sample `android/key.properties.example`
 - [ ] Create `android/qadaa-release-key.jks`
 - [ ] Create `android/key.properties`
 - [ ] Build `./gradlew bundleRelease`
 - [ ] Build `./gradlew assembleRelease`
 - [ ] Install and test the release APK on a real Android device
+- [ ] Confirm target SDK is still Play-compliant before upload
 
 ## Product Validation
 
@@ -34,6 +37,7 @@
 - [ ] Prepare screenshots
 - [ ] Prepare feature graphic
 - [ ] Confirm content rating questionnaire answers
+- [ ] Complete developer verification requirements in Play Console if prompted
 
 ## Release Decision
 
@@ -42,4 +46,3 @@
 - [ ] Test from Play internal track
 - [ ] Fix any release-only issues
 - [ ] Submit production release
-

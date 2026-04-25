@@ -1,21 +1,20 @@
 # Android Release Guide
 
-This project is close to Play-ready, but you still need a real package name and a real release keystore before uploading.
+This project is close to Play-ready, but you still need a real release keystore, a signed AAB, and the Play Console policy/compliance steps before uploading.
 
-## 1. Choose Your Final Package Name
+## 1. Confirm The Package Name
 
-Right now the app still uses:
+The app is currently configured as:
 
 `com.ghassannabary.qadaa`
 
-Before Google Play upload, replace it with your final package id in:
+If you want to keep that package id, you do not need to change anything.
+
+If you want a different final package id, update it consistently in:
 
 - `/Users/ghassannabary/Projects/QadaaApp/app.json`
 - `/Users/ghassannabary/Projects/QadaaApp/android/app/build.gradle`
-
-Example:
-
-`com.ghassannabary.qadaa`
+- `/Users/ghassannabary/Projects/QadaaApp/android/app/src/main/java/com/ghassannabary/qadaa/`
 
 ## 2. Create a Release Keystore
 
@@ -39,7 +38,14 @@ Create:
 
 `/Users/ghassannabary/Projects/QadaaApp/android/key.properties`
 
-With:
+You can copy the sample first:
+
+```bash
+cp /Users/ghassannabary/Projects/QadaaApp/android/key.properties.example \
+  /Users/ghassannabary/Projects/QadaaApp/android/key.properties
+```
+
+Then fill it with:
 
 ```properties
 storeFile=qadaa-release-key.jks
@@ -98,20 +104,23 @@ Before upload, prepare:
 - privacy policy URL
 - data safety answers
 - support email
+- developer verification details if Play Console asks for them
 
 ## 7. Current Code-Side Release Prep Already Done
 
 These are already improved in the repo:
 
-- unnecessary Android storage permissions removed
-- release signing config now supports `android/key.properties`
+- unnecessary Android storage/debug-style permissions removed
+- release signing now fails fast without `android/key.properties`
+- Android backup is disabled by default until data policy/storage decisions are final
 - release keystore files are ignored by git
+- sample `android/key.properties.example` is included
 
 ## 8. Still Not Automatically Finished
 
 These still need your decision or account setup:
 
-- final Android package name
 - release keystore creation
 - Play Console listing and policy forms
 - final production AAB test on device
+- internal testing upload through Play Console

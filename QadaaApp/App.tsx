@@ -78,10 +78,12 @@ import { DividerOrnament } from './src/ui/patterns/DividerOrnament';
 
 const STORAGE_KEY = 'qadaa-simple-v2';
 const ONBOARD_KEY = 'qadaa-onboarded-v1';
+const TOUR_KEY = 'qadaa-install-tour-seen-v1';
 const HADITH_ROTATION_KEY = 'qadaa-daily-hadith-index-v1';
 const AUTO_BACKUP_INTERVAL = 30 * 1000;
 const DEFAULT_NOTES = defaultAppState().notes;
 const APP_BACKGROUND = require('./assets/patterns/backgrounds/app-islamic-floral-background.png');
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -155,11 +157,15 @@ type CopyBlock = {
   profilePrefillHint: string;
   profileEmailInvalid: string;
   prefillFromGoogle: string;
-  prefillFromFacebook: string;
   onboardingEstimateTitle: string;
   onboardingEstimateBody: string;
+  onboardingMethodTitle: string;
+  onboardingMethodEstimate: string;
+  onboardingMethodManual: string;
   onboardingTrustTitle: string;
   onboardingTrustBody: string;
+  onboardingWhyShow: string;
+  onboardingWhyHide: string;
   onboardingAssumption1: string;
   onboardingAssumption2: string;
   onboardingAssumption3: string;
@@ -172,6 +178,8 @@ type CopyBlock = {
   menstruationHint: string;
   estimateBacklog: string;
   estimateBacklogBody: string;
+  onboardingAutoCountTitle: string;
+  onboardingAutoCountBody: string;
   useEstimate: string;
   startNow: string;
   skipForNow: string;
@@ -215,14 +223,30 @@ type CopyBlock = {
   qnaScholarLabel: string;
   qnaSourceLabel: string;
   qnaCategoryLabel: string;
+  installTourTitle: string;
+  installTourSubtitle: string;
+  installTourSkip: string;
+  installTourNext: string;
+  installTourDone: string;
+  installTourHomeTitle: string;
+  installTourHomeBody: string;
+  installTourHistoryTitle: string;
+  installTourHistoryBody: string;
+  installTourAnswersTitle: string;
+  installTourAnswersBody: string;
+  installTourMoreTitle: string;
+  installTourMoreBody: string;
   settingsTitle: string;
   targetSettingsTitle: string;
   targetSettingsHint: string;
   currentTargetLabel: string;
   currentTargetDaysLabel: string;
+  currentSettingLabel: string;
   manualDaysLabel: string;
   manualDaysHint: string;
   saveTarget: string;
+  targetSaved: string;
+  numberFieldInvalid: string;
   recalculateTarget: string;
   recalculateTitle: string;
   saveEstimateChanges: string;
@@ -230,7 +254,6 @@ type CopyBlock = {
   accountTitle: string;
   accountHint: string;
   connectGoogle: string;
-  connectFacebook: string;
   connectedAs: string;
   signOut: string;
   authComingSoon: string;
@@ -253,15 +276,23 @@ type CopyBlock = {
   notificationSaveTime: string;
   notificationTimeInvalid: string;
   notificationTimeSaved: string;
+  notificationTestScheduled: string;
   notificationTestReminder: string;
   notificationTestSent: string;
   notificationStatusLabel: string;
   notificationStatusOn: string;
   notificationStatusOff: string;
+  notificationSavedTimeLabel: string;
+  notificationDraftTimeLabel: string;
   defaultAddTitle: string;
   defaultAddHint: string;
   defaultAddLabel: string;
+  defaultAddEditableNote: string;
+  defaultAddMainNote: string;
   defaultAddSave: string;
+  defaultAddSaved: string;
+  defaultAddIndicator: string;
+  defaultAddOff: string;
   enableNotification: string;
   disableNotification: string;
   notificationPermissionDenied: string;
@@ -280,6 +311,11 @@ type CopyBlock = {
   backupImportFailure: string;
   autoBackup: string;
   enabled: string;
+  contactDeveloperTitle: string;
+  contactDeveloperHint: string;
+  developerNameLabel: string;
+  developerEmailLabel: string;
+  appVersionLabel: string;
   openSource: string;
   finish: string;
   needHistory: string;
@@ -333,22 +369,26 @@ const COPY: Record<AppLanguage, CopyBlock> = {
       'Choose your language, set a simple Shafi\'i estimate, and start with a calm, easy flow.',
     profileSetupTitle: 'Your profile',
     profileSetupBody:
-      'Start with a few basics so the app feels personal from the first day. You can also pull your name and email from Google or Facebook.',
+      'You can add your name and email now or leave them for later. Google can fill them for you.',
     profileNameLabel: 'Name',
     profileNameHint: 'Use the name you want to see in the app.',
     profileAgeLabel: 'Current age',
     profileAgeHint: 'Optional, but useful for personal setup context.',
     profileEmailLabel: 'Email',
-    profilePrefillHint: 'Google or Facebook can fill your name and email. Age still needs to be entered by you.',
+    profilePrefillHint: 'Optional. Google can fill your name and email for you.',
     profileEmailInvalid: 'Enter a valid email address.',
     prefillFromGoogle: 'Fill from Google',
-    prefillFromFacebook: 'Fill from Facebook',
     onboardingEstimateTitle: "First-time Shafi'i estimate",
     onboardingEstimateBody:
       'Estimate from the latest likely puberty age until the age when regular prayer became certain. If unsure whether a prayer was prayed, count it. Menstruation days can be excluded.',
+    onboardingMethodTitle: 'Choose how to set your qadaa',
+    onboardingMethodEstimate: 'Use the guided estimate',
+    onboardingMethodManual: 'Enter missed days manually',
     onboardingTrustTitle: "Why this estimate is Shafi'i",
     onboardingTrustBody:
       'This setup is a practical starting estimate based on trusted Shafi\'i answers. It helps you begin clearly, then edit the count later if needed.',
+    onboardingWhyShow: 'Why this estimate?',
+    onboardingWhyHide: 'Hide why',
     onboardingAssumption1:
       'Start from the latest age puberty was definitely reached, not the earliest guess.',
     onboardingAssumption2:
@@ -365,15 +405,18 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     menstruationHint: 'Optional. Keep 0 if not applicable.',
     estimateBacklog: 'Estimated backlog',
     estimateBacklogBody: 'This fills the five daily prayers with the same number of missed days.',
-    useEstimate: 'Use estimate',
-    startNow: 'Start now',
-    skipForNow: 'Skip for now',
+    onboardingAutoCountTitle: 'Finish projection',
+    onboardingAutoCountBody:
+      'By default, the app estimates your finish date as if you complete 1 qadaa day each day. This does not add progress automatically, and you can change it later in Settings, even to 0.',
+    useEstimate: 'Save and continue',
+    startNow: 'Continue',
+    skipForNow: 'Continue without estimate',
     remaining: 'Prayers left',
     completed: 'Total finished',
-    primaryFocus: 'Main focus',
+    primaryFocus: 'What is left',
     daysCompleted: 'Qadaa days completed',
     daysLeft: 'Qadaa days left',
-    overallProgress: 'Overall progress',
+    overallProgress: 'Completed so far',
     progressTitle: 'Progress',
     progressHint: 'See what is left and when you finish if you count one qadaa day each day.',
     quickAddTitle: 'Quick add',
@@ -402,38 +445,57 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     prayersLabel: 'prayers',
     calendarLegend: 'Lighter days mean less activity. Gold means a full qadaa day.',
     qnaTitle: 'Related Q&A',
-    qnaHint: 'Q&A sourced only from Dar al-Iftaa al-Urdunniyah within Shafi\'i-tagged answers.',
+    qnaHint: 'These answers are taken from Dar al-Iftaa al-Urdunniyah and selected for this qadaa journey.',
     qnaTrustTitle: 'Dar al-Iftaa al-Urdunniyah',
     qnaTrustBody:
       'These cards summarize answers from Dar al-Iftaa al-Urdunniyah and link to the full source. Use them for guided study and planning, not as a replacement for a personal fatwa when your case is detailed or sensitive.',
-    qnaScholarLabel: 'Scholar',
+    qnaScholarLabel: 'Issued by',
     qnaSourceLabel: 'Source',
     qnaCategoryLabel: 'Topic',
+    installTourTitle: 'Quick tour',
+    installTourSubtitle: 'Three small steps to understand the main flow.',
+    installTourSkip: 'Skip',
+    installTourNext: 'Next',
+    installTourDone: 'Done',
+    installTourHomeTitle: 'Home',
+    installTourHomeBody:
+      'This is where you count one qadaa day at a time and see the finish date update as you keep going.',
+    installTourHistoryTitle: 'History',
+    installTourHistoryBody:
+      'This is your calendar view. It shows your progress by day and lets you review or correct a past day.',
+    installTourAnswersTitle: 'Q&A',
+    installTourAnswersBody:
+      'This tab holds trusted answers from Dar al-Iftaa al-Urdunniyah for prayer, fasting, and kafarah questions.',
+    installTourMoreTitle: 'Settings',
+    installTourMoreBody:
+      'Settings is where you change language, reminder time, daily pace, backup, and the optional fasting track.',
     settingsTitle: 'Settings',
     targetSettingsTitle: 'Qadaa target',
     targetSettingsHint:
       'Adjust the amount you still need to make up. You can edit the missed qadaa days directly or recalculate with the same Shafi\'i questionnaire.',
     currentTargetLabel: 'Current target',
     currentTargetDaysLabel: 'Qadaa days',
+    currentSettingLabel: 'Current setting',
     manualDaysLabel: 'Missed qadaa days',
     manualDaysHint: 'The app fills all five daily prayers equally from this number.',
     saveTarget: 'Save target',
+    targetSaved: 'Qadaa target updated.',
+    numberFieldInvalid: 'Enter a whole number of days.',
     recalculateTarget: 'Use Shafi\'i questionnaire',
     recalculateTitle: 'Recalculate qadaa estimate',
     saveEstimateChanges: 'Save estimate',
     cancel: 'Cancel',
     accountTitle: 'Account',
-    accountHint: 'Sign in now so future sharing can be tied to a real user account.',
+    accountHint: 'Sign in if you want to save your identity for future sharing and backup features.',
     connectGoogle: 'Continue with Google',
-    connectFacebook: 'Continue with Facebook',
-    connectedAs: 'Connected as',
+    connectedAs: 'Signed in as',
     signOut: 'Sign out',
     authComingSoon: 'This account will be the base for sharing progress with trusted people later.',
-    authNeedsSetup: 'Add Supabase project keys to enable Google and Facebook sign-in.',
-    sharingReadyHint: 'Google and Facebook give us the user identity we need before adding progress sharing.',
-    authConfiguredLabel: 'Auth configured',
-    authReady: 'Ready',
-    authNotReady: 'Needs setup',
+    authNeedsSetup: 'Sign-in is not ready yet on this build.',
+    sharingReadyHint: 'Sign in with Google to use future backup and sharing features.',
+    authConfiguredLabel: 'Sign-in status',
+    authReady: 'Available',
+    authNotReady: 'Not available',
     languageTitle: 'Language',
     languageHint: 'Choose one full app language for the whole interface.',
     notificationTitle: 'Daily reminder',
@@ -449,16 +511,24 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationSaveTime: 'Save reminder time',
     notificationTimeInvalid: 'Enter a valid time using 24-hour values.',
     notificationTimeSaved: 'Reminder time updated.',
+    notificationTestScheduled: 'Test reminder scheduled for the next moment.',
     notificationTestReminder: 'Send test reminder',
     notificationTestSent: 'A test reminder has been sent.',
     notificationStatusLabel: 'Status',
     notificationStatusOn: 'On',
     notificationStatusOff: 'Off',
-    defaultAddTitle: 'Daily plan',
+    notificationSavedTimeLabel: 'Saved time',
+    notificationDraftTimeLabel: 'New time',
+    defaultAddTitle: 'Finish estimate',
     defaultAddHint:
-      'Choose how many qadaa days you usually aim to complete in one day. This affects the finish estimate, not the button count.',
-    defaultAddLabel: 'Planned qadaa days per day',
-    defaultAddSave: 'Save plan',
+      'Choose how many qadaa days you hope to finish in a normal day. This changes the estimate only. The main button still counts one day at a time.',
+    defaultAddLabel: 'Average qadaa days per day',
+    defaultAddEditableNote: 'You can change this anytime in Settings, even to 0.',
+    defaultAddMainNote: 'Change this later in Settings.',
+    defaultAddSave: 'Save estimate',
+    defaultAddSaved: 'Finish estimate updated.',
+    defaultAddIndicator: 'Using per day',
+    defaultAddOff: 'Off',
     enableNotification: 'Turn on reminder',
     disableNotification: 'Turn off reminder',
     notificationPermissionDenied:
@@ -468,10 +538,10 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     comingNextTitle: 'Coming next',
     comingNextBody:
       'Daily notifications can be added next, asking whether the day was counted and offering a quick undo.',
-    backupTitle: 'Data backup',
+    backupTitle: 'Backup',
     backupHint: 'Your data auto-saves locally. Export a manual backup any time.',
-    exportBackup: 'Export Backup',
-    importBackup: 'Import Backup',
+    exportBackup: 'Export data',
+    importBackup: 'Restore backup',
     backupExportSuccess: 'Backup export is ready to share or save.',
     backupExportFailure: 'Backup export failed.',
     backupImportConfirm: 'Restore the latest saved backup? This will replace your current local data.',
@@ -479,6 +549,11 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     backupImportFailure: 'Backup restore failed or no saved backup was found.',
     autoBackup: 'Auto-backup',
     enabled: 'Enabled',
+    contactDeveloperTitle: 'Contact developer',
+    contactDeveloperHint: 'Questions, feedback, or support requests.',
+    developerNameLabel: 'Developer',
+    developerEmailLabel: 'Email',
+    appVersionLabel: 'App version',
     openSource: 'Open source',
     finish: 'Finish',
     needHistory: 'Need more history',
@@ -534,22 +609,26 @@ const COPY: Record<AppLanguage, CopyBlock> = {
       'اختر اللغة، واضبط تقديراً أولياً على المذهب الشافعي، ثم ابدأ بخطوات واضحة وبسيطة.',
     profileSetupTitle: 'بياناتك',
     profileSetupBody:
-      'ابدأ ببعض المعلومات الأساسية حتى يكون التطبيق أقرب لك من أول يوم. ويمكنك أيضاً جلب الاسم والبريد من جوجل أو فيسبوك.',
+      'يمكنك إضافة الاسم والبريد الآن أو تركهما لوقت لاحق. كما يمكن لجوجل تعبئتهما لك.',
     profileNameLabel: 'الاسم',
     profileNameHint: 'اكتب الاسم الذي تريد ظهوره داخل التطبيق.',
     profileAgeLabel: 'العمر الحالي',
     profileAgeHint: 'اختياري، لكنه يفيد في ضبط البداية بشكل شخصي.',
     profileEmailLabel: 'البريد الإلكتروني',
-    profilePrefillHint: 'يمكن لجوجل أو فيسبوك تعبئة الاسم والبريد، أما العمر فيبقى لإدخالك أنت.',
+    profilePrefillHint: 'اختياري. يمكن لجوجل تعبئة الاسم والبريد لك.',
     profileEmailInvalid: 'أدخل بريدًا إلكترونيًا صحيحًا.',
     prefillFromGoogle: 'تعبئة من جوجل',
-    prefillFromFacebook: 'تعبئة من فيسبوك',
     onboardingEstimateTitle: 'تقدير أولي على المذهب الشافعي',
     onboardingEstimateBody:
       'يبدأ التقدير من آخر سنّ يُحتمل فيه البلوغ إلى السنّ الذي تيقنت فيه من الانتظام في الصلاة. وإذا شككت هل صليت صلاةً أم لا فاحسبها. ويمكن استثناء أيام الحيض.',
+    onboardingMethodTitle: 'اختر طريقة تحديد القضاء',
+    onboardingMethodEstimate: 'استخدم التقدير الموجّه',
+    onboardingMethodManual: 'أدخل الأيام الفائتة يدوياً',
     onboardingTrustTitle: 'لماذا هذا التقدير شافعي',
     onboardingTrustBody:
       'هذا التقدير بداية عملية مبنية على أجوبة شافعية موثوقة، والغرض منه أن تبدأ بوضوح ثم تعدّل العدد لاحقاً إذا احتجت.',
+    onboardingWhyShow: 'لماذا هذا التقدير؟',
+    onboardingWhyHide: 'إخفاء السبب',
     onboardingAssumption1:
       'ابدأ من آخر سنّ تتيقن أن البلوغ كان قد حصل فيه، لا من أول احتمال.',
     onboardingAssumption2:
@@ -566,15 +645,18 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     menstruationHint: 'اختياري. اتركه 0 إن لم يكن مناسباً.',
     estimateBacklog: 'التقدير الأولي',
     estimateBacklogBody: 'سيملأ هذا التقدير الصلوات الخمس اليومية بنفس عدد الأيام الفائتة.',
-    useEstimate: 'استخدم التقدير',
-    startNow: 'ابدأ الآن',
-    skipForNow: 'تخطَّ الآن',
+    onboardingAutoCountTitle: 'تقدير الانتهاء',
+    onboardingAutoCountBody:
+      'يفترض التطبيق افتراضياً في تاريخ الانتهاء أنك تُنجز يوم قضاء واحداً كل يوم. هذا لا يضيف تقدّماً تلقائياً، ويمكنك تغييره لاحقاً من الإعدادات، وحتى جعله 0.',
+    useEstimate: 'احفظ وتابع',
+    startNow: 'تابع',
+    skipForNow: 'تابع بدون تقدير',
     remaining: 'الصلوات المتبقية',
     completed: 'إجمالي المنجز',
-    primaryFocus: 'التركيز الأساسي',
+    primaryFocus: 'المتبقي عليك',
     daysCompleted: 'أيام القضاء المنجزة',
     daysLeft: 'أيام القضاء المتبقية',
-    overallProgress: 'التقدّم العام',
+    overallProgress: 'المنجز حتى الآن',
     progressTitle: 'التقدّم',
     progressHint: 'شاهد المتبقي وتاريخ الانتهاء إذا احتسبت يوم قضاء واحداً كل يوم.',
     quickAddTitle: 'إضافة سريعة',
@@ -603,38 +685,57 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     prayersLabel: 'صلوات',
     calendarLegend: 'كلما كان اللون أفتح كان النشاط أقل، والذهبي يعني يوم قضاء كامل.',
     qnaTitle: 'الفتاوى',
-    qnaHint: 'قسم الفتاوى هنا يعتمد فقط على أجوبة دار الإفتاء الأردنية ضمن الوسوم الشافعية.',
+    qnaHint: 'هذه الأجوبة مأخوذة من دار الإفتاء الأردنية، واختيرت لما يتعلق بقضاء الصلاة والصيام.',
     qnaTrustTitle: 'دار الإفتاء الأردنية',
     qnaTrustBody:
       'هذه البطاقات تلخص أجوبة من دار الإفتاء الأردنية وتربطك بالمصدر الكامل. استخدمها للفهم والتنظيم، لا بديلاً عن الفتوى الشخصية إذا كانت حالتك خاصة أو دقيقة.',
-    qnaScholarLabel: 'العالِم',
+    qnaScholarLabel: 'الجهة المصدرة',
     qnaSourceLabel: 'المصدر',
     qnaCategoryLabel: 'الموضوع',
+    installTourTitle: 'جولة سريعة',
+    installTourSubtitle: 'ثلاث خطوات صغيرة لفهم المسار الرئيسي.',
+    installTourSkip: 'تخطي',
+    installTourNext: 'التالي',
+    installTourDone: 'تم',
+    installTourHomeTitle: 'الرئيسية',
+    installTourHomeBody:
+      'هنا تحتسب يوم قضاء واحدًا في كل مرة، وترى تاريخ الانتهاء يتغير مع استمرارك.',
+    installTourHistoryTitle: 'التقويم',
+    installTourHistoryBody:
+      'هذا هو عرض التقويم. يعرض تقدّمك يومًا بيوم، ويمكنك مراجعة يوم سابق أو تصحيحه.',
+    installTourAnswersTitle: 'الفتاوى',
+    installTourAnswersBody:
+      'هذا التبويب يحوي أجوبة موثوقة من دار الإفتاء الأردنية حول الصلاة والصيام والكفارة.',
+    installTourMoreTitle: 'الإعدادات',
+    installTourMoreBody:
+      'هنا تغيّر اللغة، ووقت التذكير، ومعدل العدّ اليومي، والنسخ الاحتياطي، ومسار الصيام الاختياري.',
     settingsTitle: 'الإعدادات',
     targetSettingsTitle: 'هدف القضاء',
     targetSettingsHint:
       'عدّل المقدار الذي تريد قضاؤه. يمكنك إدخال عدد أيام القضاء مباشرة أو إعادة الحساب عبر نفس الاستبيان الشافعي.',
     currentTargetLabel: 'الهدف الحالي',
     currentTargetDaysLabel: 'أيام القضاء',
+    currentSettingLabel: 'الإعداد الحالي',
     manualDaysLabel: 'أيام القضاء الفائتة',
     manualDaysHint: 'سيملأ التطبيق الصلوات الخمس اليومية بنفس هذا العدد.',
     saveTarget: 'حفظ الهدف',
+    targetSaved: 'تم تحديث هدف القضاء.',
+    numberFieldInvalid: 'أدخل عدداً صحيحاً من الأيام.',
     recalculateTarget: 'إعادة الحساب بالاستبيان الشافعي',
     recalculateTitle: 'إعادة تقدير القضاء',
     saveEstimateChanges: 'حفظ التقدير',
     cancel: 'إلغاء',
     accountTitle: 'الحساب',
-    accountHint: 'يمكنك تسجيل الدخول الآن حتى ترتبط المشاركة لاحقاً بحسابك.',
-    connectGoogle: 'المتابعة باستخدام جوجل',
-    connectFacebook: 'المتابعة باستخدام فيسبوك',
-    connectedAs: 'متصل باسم',
+    accountHint: 'يمكنك تسجيل الدخول إذا أردت استخدام النسخ الاحتياطي أو المشاركة لاحقاً.',
+    connectGoogle: 'المتابعة عبر جوجل',
+    connectedAs: 'تم تسجيل الدخول باسم',
     signOut: 'تسجيل الخروج',
-    authComingSoon: 'سيكون هذا الحساب أساس مشاركة التقدّم مع أشخاص موثوقين لاحقاً.',
-    authNeedsSetup: 'أضف مفاتيح مشروع Supabase لتفعيل تسجيل الدخول عبر جوجل وفيسبوك.',
-    sharingReadyHint: 'يوفر لنا جوجل وفيسبوك هوية المستخدم اللازمة قبل إضافة مشاركة التقدّم.',
-    authConfiguredLabel: 'إعداد المصادقة',
-    authReady: 'جاهز',
-    authNotReady: 'يحتاج إعداداً',
+    authComingSoon: 'سيكون هذا الحساب أساساً للنسخ الاحتياطي والمشاركة لاحقاً.',
+    authNeedsSetup: 'تسجيل الدخول غير متاح بعد في هذه النسخة.',
+    sharingReadyHint: 'سجّل عبر جوجل لاستخدام مزايا النسخ الاحتياطي والمشاركة عند توفرها.',
+    authConfiguredLabel: 'حالة تسجيل الدخول',
+    authReady: 'متاح',
+    authNotReady: 'غير متاح',
     languageTitle: 'اللغة',
     languageHint: 'اختر لغة واحدة كاملة لواجهة التطبيق كلها.',
     notificationTitle: 'التذكير اليومي',
@@ -650,16 +751,24 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationSaveTime: 'حفظ وقت التذكير',
     notificationTimeInvalid: 'أدخل وقتاً صحيحاً بصيغة 24 ساعة.',
     notificationTimeSaved: 'تم تحديث وقت التذكير.',
+    notificationTestScheduled: 'تمت جدولة التذكير التجريبي للحظة التالية.',
     notificationTestReminder: 'إرسال تذكير تجريبي',
     notificationTestSent: 'تم إرسال تذكير تجريبي.',
     notificationStatusLabel: 'الحالة',
     notificationStatusOn: 'مفعّل',
     notificationStatusOff: 'متوقف',
-    defaultAddTitle: 'الخطة اليومية',
+    notificationSavedTimeLabel: 'الوقت المحفوظ',
+    notificationDraftTimeLabel: 'الوقت الجديد',
+    defaultAddTitle: 'تقدير الانتهاء',
     defaultAddHint:
-      'اختر عدد أيام القضاء التي تنوي إنجازها عادةً في اليوم. يؤثر هذا على تقدير الانتهاء فقط، لا على عدد الزر.',
-    defaultAddLabel: 'أيام القضاء المخططة يومياً',
-    defaultAddSave: 'حفظ الخطة',
+      'اختر عدد أيام القضاء التي ترجّح إنجازها في يوم عادي. هذا يغيّر تقدير الانتهاء فقط، أما الزر الرئيسي فيبقى يوماً واحداً كل مرة.',
+    defaultAddLabel: 'متوسط أيام القضاء يومياً',
+    defaultAddEditableNote: 'يمكنك تغيير هذا لاحقاً من الإعدادات، وحتى جعله 0.',
+    defaultAddMainNote: 'يمكنك تغييره لاحقاً من الإعدادات.',
+    defaultAddSave: 'حفظ التقدير',
+    defaultAddSaved: 'تم تحديث تقدير الانتهاء.',
+    defaultAddIndicator: 'المعتمد يومياً',
+    defaultAddOff: 'متوقف',
     enableNotification: 'تفعيل التذكير',
     disableNotification: 'إيقاف التذكير',
     notificationPermissionDenied:
@@ -669,10 +778,10 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     comingNextTitle: 'لاحقاً',
     comingNextBody:
       'يمكن إضافة مزيد من التنبيهات الذكية لاحقاً، مع خيارات أسرع للتسجيل والتراجع.',
-    backupTitle: 'نسخ البيانات',
+    backupTitle: 'النسخ الاحتياطي',
     backupHint: 'بياناتك تُحفظ محلياً تلقائياً. ويمكنك التصدير في أي وقت لنسخة يدوية.',
-    exportBackup: 'تصدير نسخة',
-    importBackup: 'استيراد نسخة',
+    exportBackup: 'تصدير البيانات',
+    importBackup: 'استعادة نسخة احتياطية',
     backupExportSuccess: 'أصبحت نسخة الاحتياط جاهزة للمشاركة أو الحفظ.',
     backupExportFailure: 'فشل تصدير نسخة الاحتياط.',
     backupImportConfirm: 'هل تريد استعادة آخر نسخة احتياطية محفوظة؟ سيؤدي ذلك إلى استبدال بياناتك المحلية الحالية.',
@@ -680,6 +789,11 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     backupImportFailure: 'فشلت استعادة النسخة الاحتياطية أو لم يتم العثور على نسخة محفوظة.',
     autoBackup: 'الحفظ التلقائي',
     enabled: 'مفعّل',
+    contactDeveloperTitle: 'تواصل مع المطوّر',
+    contactDeveloperHint: 'للأسئلة أو الملاحظات أو طلبات الدعم.',
+    developerNameLabel: 'المطوّر',
+    developerEmailLabel: 'البريد الإلكتروني',
+    appVersionLabel: 'إصدار التطبيق',
     openSource: 'عرض المصدر',
     finish: 'الانتهاء',
     needHistory: 'تحتاج إلى مزيد من السجل',
@@ -831,12 +945,8 @@ const ONBOARDING_SOURCES: Record<
       url: 'https://www.fatawah.net/Fatawah/1255.aspx',
     },
     {
-      label: 'Qibla: estimating missed prayers',
-      url: 'https://islamqa.org/shafii/qibla-shafii/34205/making-up-missed-prayers/',
-    },
-    {
-      label: 'SeekersGuidance: making up missed prayers',
-      url: 'https://islamqa.org/shafii/seekersguidance-shafii/168871/is-it-necessary-to-make-up-missed-prayers-shafii/',
+      label: 'Dar al-Iftaa al-Urdunniyah: making up missed prayers',
+      url: 'https://www.aliftaa.jo/fatwa/2705/%D9%87%D9%84-%D9%8A%D8%AC%D9%88%D8%B2-%D9%82%D8%B6%D8%A7%D8%A1-%D8%A3%D9%83%D8%AB%D8%B1-%D9%85%D9%86-%D9%81%D8%B1%D8%B6-%D9%81%D8%A7%D8%A6%D8%AA-%D9%81%D9%8A-%D9%88%D9%82%D8%AA-%D9%83%D9%84-%D8%B5%D9%84%D8%A7%D8%A9',
     },
   ],
   ar: [
@@ -845,12 +955,8 @@ const ONBOARDING_SOURCES: Record<
       url: 'https://www.fatawah.net/Fatawah/1255.aspx',
     },
     {
-      label: 'Qibla: تقدير الصلوات الفائتة',
-      url: 'https://islamqa.org/shafii/qibla-shafii/34205/making-up-missed-prayers/',
-    },
-    {
-      label: 'SeekersGuidance: قضاء الصلوات',
-      url: 'https://islamqa.org/shafii/seekersguidance-shafii/168871/is-it-necessary-to-make-up-missed-prayers-shafii/',
+      label: 'دار الإفتاء الأردنية: قضاء الصلوات الفائتة',
+      url: 'https://www.aliftaa.jo/fatwa/2705/%D9%87%D9%84-%D9%8A%D8%AC%D9%88%D8%B2-%D9%82%D8%B6%D8%A7%D8%A1-%D8%A3%D9%83%D8%AB%D8%B1-%D9%85%D9%86-%D9%81%D8%B1%D8%B6-%D9%81%D8%A7%D8%A6%D8%AA-%D9%81%D9%8A-%D9%88%D9%82%D8%AA-%D9%83%D9%84-%D8%B5%D9%84%D8%A7%D8%A9',
     },
   ],
 };
@@ -1001,10 +1107,30 @@ function buildShafiiEstimate({
   };
 }
 
+function buildManualMissedDaysSetup(language: AppLanguage, manualMissedDays: string): OnboardingSetup | null {
+  if (manualMissedDays.trim() === '') return null;
+
+  const parsedDays = Number(manualMissedDays);
+  if (Number.isNaN(parsedDays)) return null;
+
+  const missedDays = Math.max(0, Math.round(parsedDays));
+
+  return {
+    missedDays,
+    target: countsFromMissedDays(missedDays),
+    notes:
+      language === 'ar'
+        ? `إدخال يدوي لأيام القضاء: ${missedDays} يوم.`
+        : `Manual missed-days entry: ${missedDays} days.`,
+  };
+}
+
 export default function App() {
   const [state, setState] = useState<AppState>(defaultAppState());
   const [loaded, setLoaded] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showInstallTour, setShowInstallTour] = useState(false);
+  const [installTourSeen, setInstallTourSeen] = useState(false);
   const [hadithIndex, setHadithIndex] = useState(0);
   const [authSession, setAuthSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(isAuthConfigured);
@@ -1016,6 +1142,7 @@ export default function App() {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         const onboarded = await AsyncStorage.getItem(ONBOARD_KEY);
+        const tourSeen = await AsyncStorage.getItem(TOUR_KEY);
         const storedHadithIndex = await AsyncStorage.getItem(HADITH_ROTATION_KEY);
         const backupAge = await getBackupAge();
         const hadithCount = DAILY_HADITH.en.length;
@@ -1028,10 +1155,13 @@ export default function App() {
         if (raw) {
           setState(hydrateState(JSON.parse(raw) as Partial<AppState>));
         }
+        setInstallTourSeen(tourSeen === '1');
         setHadithIndex(nextHadithIndex);
         await AsyncStorage.setItem(HADITH_ROTATION_KEY, String(nextHadithIndex));
         if (!onboarded) {
           setShowOnboarding(true);
+        } else if (!tourSeen) {
+          setShowInstallTour(true);
         }
         if (backupAge) {
           console.log(`Last backup: ${Math.round(backupAge)} days ago`);
@@ -1239,6 +1369,7 @@ export default function App() {
   const updateDailyReminderTime = useCallback(
     async (hour: number, minute: number) => {
       const copy = COPY[state.language];
+      const formattedTime = formatReminderTime(hour, minute, state.language);
 
       try {
         if (state.notificationEnabled) {
@@ -1255,7 +1386,7 @@ export default function App() {
             notificationMinute: minute,
             notificationScheduleId,
           }));
-          Alert.alert(copy.notificationTitle, copy.notificationTimeSaved);
+          Alert.alert(copy.notificationTitle, `${copy.notificationTimeSaved} ${formattedTime}`);
           return;
         }
 
@@ -1265,7 +1396,7 @@ export default function App() {
           notificationMinute: minute,
         }));
 
-        Alert.alert(copy.notificationTitle, copy.notificationTimeSaved);
+        Alert.alert(copy.notificationTitle, `${copy.notificationTimeSaved} ${formattedTime}`);
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to update reminder time.';
@@ -1286,7 +1417,7 @@ export default function App() {
 
     try {
       await sendTestReminderNotification(buildDailyReminderCopy(copy));
-      Alert.alert(copy.notificationTitle, copy.notificationTestSent);
+      Alert.alert(copy.notificationTitle, copy.notificationTestScheduled);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to send test reminder.';
       Alert.alert(copy.notificationTitle, message);
@@ -1326,7 +1457,20 @@ export default function App() {
     }
 
     setShowOnboarding(false);
+    if (!installTourSeen) {
+      setShowInstallTour(true);
+    }
   };
+
+  const finishInstallTour = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(TOUR_KEY, '1');
+    } catch (error) {
+      console.warn('Failed to persist install tour state', error);
+    }
+    setInstallTourSeen(true);
+    setShowInstallTour(false);
+  }, []);
 
   const handleExport = useCallback(async () => {
     const copy = COPY[state.language];
@@ -1387,10 +1531,22 @@ export default function App() {
   const handleProviderSignIn = useCallback(
     async (provider: 'google' | 'facebook') => {
       if (authBusyProvider) return;
+      const providerLabel =
+        state.language === 'ar'
+          ? provider === 'google'
+            ? 'جوجل'
+            : 'فيسبوك'
+          : provider === 'google'
+            ? 'Google'
+            : 'Facebook';
       if (Constants.appOwnership === 'expo') {
         Alert.alert(
-          provider === 'google' ? 'Google sign-in' : 'Facebook sign-in',
-          'Social sign-in needs a development build. Please run the app with `npx expo run:android` or `npx expo run:ios`, then try again.'
+          state.language === 'ar'
+            ? `تسجيل الدخول عبر ${providerLabel}`
+            : `${providerLabel} sign-in`,
+          state.language === 'ar'
+            ? 'تسجيل الدخول الاجتماعي يحتاج إلى نسخة تطويرية من التطبيق. شغّل `npx expo run:android` أو `npx expo run:ios` ثم جرّب مرة أخرى.'
+            : 'Social sign-in needs a development build. Please run the app with `npx expo run:android` or `npx expo run:ios`, then try again.'
         );
         return;
       }
@@ -1399,14 +1555,19 @@ export default function App() {
         setAuthBusyProvider(provider);
         await signInWithProvider(provider);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Sign-in failed.';
+        const message =
+          error instanceof Error
+            ? error.message
+            : state.language === 'ar'
+              ? 'تعذر تسجيل الدخول.'
+              : 'Sign-in failed.';
         setAuthError(message);
-        Alert.alert(provider === 'google' ? 'Google' : 'Facebook', message);
+        Alert.alert(providerLabel, message);
       } finally {
         setAuthBusyProvider(null);
       }
     },
-    [authBusyProvider]
+    [authBusyProvider, state.language]
   );
 
   const handleSignOut = useCallback(async () => {
@@ -1414,11 +1575,16 @@ export default function App() {
       setAuthError(null);
       await signOutUser();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Sign-out failed.';
+      const message =
+        error instanceof Error
+          ? error.message
+          : state.language === 'ar'
+            ? 'تعذر تسجيل الخروج.'
+            : 'Sign-out failed.';
       setAuthError(message);
-      Alert.alert('Sign out', message);
+      Alert.alert(state.language === 'ar' ? 'تسجيل الخروج' : 'Sign out', message);
     }
-  }, []);
+  }, [state.language]);
 
   const accountProfile = useMemo<AccountProfile>(() => getUserProfile(authSession?.user ?? null), [authSession]);
 
@@ -1434,7 +1600,6 @@ export default function App() {
             authBusyProvider={authBusyProvider}
             authError={authError}
             onGoogleSignIn={() => handleProviderSignIn('google')}
-            onFacebookSignIn={() => handleProviderSignIn('facebook')}
             onComplete={dismissOnboarding}
           />
         ) : (
@@ -1460,7 +1625,6 @@ export default function App() {
             authBusyProvider={authBusyProvider}
             authError={authError}
             onGoogleSignIn={() => handleProviderSignIn('google')}
-            onFacebookSignIn={() => handleProviderSignIn('facebook')}
             onSignOut={handleSignOut}
             notificationEnabled={state.notificationEnabled}
             notificationHour={state.notificationHour}
@@ -1473,6 +1637,8 @@ export default function App() {
             onDefaultDailyAddDaysChange={(defaultDailyAddDays) =>
               setState((current) => ({ ...current, defaultDailyAddDays }))
             }
+            showInstallTour={showInstallTour}
+            onFinishInstallTour={finishInstallTour}
           />
         )}
       </View>
@@ -1501,7 +1667,7 @@ function LanguageToggle({
               language === option && styles.languageButtonTextActive,
             ]}
           >
-            {option === 'en' ? 'EN' : 'AR'}
+            {option === 'en' ? 'EN' : 'العربية'}
           </Text>
         </Pressable>
       ))}
@@ -1552,7 +1718,6 @@ function OnboardingScreen({
   authBusyProvider,
   authError,
   onGoogleSignIn,
-  onFacebookSignIn,
   onComplete,
 }: {
   language: AppLanguage;
@@ -1561,11 +1726,12 @@ function OnboardingScreen({
   authBusyProvider: 'google' | 'facebook' | null;
   authError: string | null;
   onGoogleSignIn: () => void;
-  onFacebookSignIn: () => void;
   onComplete: (setup?: OnboardingSetup) => void;
 }) {
+  const [estimateMode, setEstimateMode] = useState<'estimate' | 'manual'>('estimate');
   const [profileName, setProfileName] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
+  const [manualMissedDays, setManualMissedDays] = useState('');
   const [latestPubertyAge, setLatestPubertyAge] = useState('15');
   const [regularPrayerAge, setRegularPrayerAge] = useState('');
   const [menstruationDays, setMenstruationDays] = useState('0');
@@ -1580,6 +1746,11 @@ function OnboardingScreen({
       }),
     [language, latestPubertyAge, regularPrayerAge, menstruationDays]
   );
+  const manualSetup = useMemo(
+    () => buildManualMissedDaysSetup(language, manualMissedDays),
+    [language, manualMissedDays]
+  );
+  const selectedSetup = estimateMode === 'manual' ? manualSetup : estimate;
 
   useEffect(() => {
     if (!accountProfile) return;
@@ -1590,6 +1761,7 @@ function OnboardingScreen({
 
   const trimmedProfileEmail = profileEmail.trim();
   const isEmailValid = trimmedProfileEmail === '' || EMAIL_REGEX.test(trimmedProfileEmail);
+  const canContinue = isEmailValid && selectedSetup !== null;
 
   const onboardingPayload = (base?: OnboardingSetup): OnboardingSetup => ({
     ...base,
@@ -1607,11 +1779,6 @@ function OnboardingScreen({
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.onboardingScrollContent}>
           <View style={styles.onboardingCard}>
-            <View style={styles.onboardingTopRow}>
-              <View style={{ flex: 1 }} />
-              <LanguageToggle language={language} onChange={onLanguageChange} />
-            </View>
-
             <View style={styles.onboardingHeaderOrnament}>
               <Text style={styles.onboardingBismillah}>بِسْمِ اللَّهِ</Text>
               <Text style={styles.onboardingBismillahSub}>
@@ -1627,6 +1794,76 @@ function OnboardingScreen({
             <Text style={[styles.onboardingSubtitle, isArabic(language) && styles.alignRight]}>
               {copy.onboardingSubtitle}
             </Text>
+
+            <View style={styles.setupCard}>
+              <View style={styles.onboardingTopRow}>
+                <View style={{ flex: 1 }} />
+                <LanguageToggle language={language} onChange={onLanguageChange} />
+              </View>
+              <Text style={[styles.setupTitle, isArabic(language) && styles.alignRight]}>
+                {copy.onboardingEstimateTitle}
+              </Text>
+              <Text style={[styles.setupBody, isArabic(language) && styles.alignRight]}>
+                {copy.onboardingEstimateBody}
+              </Text>
+
+              <View style={styles.modeToggleRow}>
+                <Text style={[styles.setupFieldLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.onboardingMethodTitle}
+                </Text>
+                <View style={styles.modeToggle}>
+                  <Pressable
+                    onPress={() => setEstimateMode('estimate')}
+                    style={[styles.modeToggleButton, estimateMode === 'estimate' && styles.modeToggleButtonActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.modeToggleButtonText,
+                        estimateMode === 'estimate' && styles.modeToggleButtonTextActive,
+                      ]}
+                    >
+                      {copy.onboardingMethodEstimate}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setEstimateMode('manual')}
+                    style={[styles.modeToggleButton, estimateMode === 'manual' && styles.modeToggleButtonActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.modeToggleButtonText,
+                        estimateMode === 'manual' && styles.modeToggleButtonTextActive,
+                      ]}
+                    >
+                      {copy.onboardingMethodManual}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <ShafiiEstimateFields
+                language={language}
+                mode={estimateMode}
+                manualMissedDays={manualMissedDays}
+                onManualMissedDaysChange={setManualMissedDays}
+                latestPubertyAge={latestPubertyAge}
+                regularPrayerAge={regularPrayerAge}
+                menstruationDays={menstruationDays}
+                onLatestPubertyAgeChange={setLatestPubertyAge}
+                onRegularPrayerAgeChange={setRegularPrayerAge}
+                onMenstruationDaysChange={setMenstruationDays}
+                estimate={selectedSetup}
+              />
+
+              <View style={styles.setupField}>
+                <Text style={[styles.setupFieldLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.onboardingAutoCountTitle}
+                </Text>
+                <Text style={[styles.setupFieldHint, isArabic(language) && styles.alignRight]}>
+                  {copy.onboardingAutoCountBody}
+                </Text>
+              </View>
+            </View>
 
             <View style={styles.setupCard}>
               <Text style={[styles.setupTitle, isArabic(language) && styles.alignRight]}>
@@ -1682,12 +1919,6 @@ function OnboardingScreen({
                     <Text style={styles.oauthButtonPrimaryText}>{copy.prefillFromGoogle}</Text>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={onFacebookSignIn} style={styles.oauthButtonSecondary}>
-                  <View style={styles.oauthButtonRow}>
-                    <Text style={styles.oauthButtonBrandSecondary}>f</Text>
-                    <Text style={styles.oauthButtonSecondaryText}>{copy.prefillFromFacebook}</Text>
-                  </View>
-                </TouchableOpacity>
               </View>
 
               {accountProfile ? (
@@ -1701,7 +1932,7 @@ function OnboardingScreen({
                 <View style={styles.accountLoadingRow}>
                   <ActivityIndicator color={COLORS.gold} />
                   <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
-                    {authBusyProvider === 'google' ? copy.prefillFromGoogle : copy.prefillFromFacebook}
+                    {copy.prefillFromGoogle}
                   </Text>
                 </View>
               ) : null}
@@ -1713,42 +1944,142 @@ function OnboardingScreen({
               ) : null}
             </View>
 
-            <View style={styles.setupCard}>
-              <Text style={[styles.setupTitle, isArabic(language) && styles.alignRight]}>
-                {copy.onboardingEstimateTitle}
-              </Text>
-              <Text style={[styles.setupBody, isArabic(language) && styles.alignRight]}>
-                {copy.onboardingEstimateBody}
-              </Text>
-
-              <ShafiiEstimateFields
-                language={language}
-                latestPubertyAge={latestPubertyAge}
-                regularPrayerAge={regularPrayerAge}
-                menstruationDays={menstruationDays}
-                onLatestPubertyAgeChange={setLatestPubertyAge}
-                onRegularPrayerAgeChange={setRegularPrayerAge}
-                onMenstruationDaysChange={setMenstruationDays}
-                estimate={estimate}
-              />
-            </View>
-
             <View style={styles.onboardingButtons}>
               <Pressable
-                onPress={isEmailValid ? () => onComplete(onboardingPayload(estimate ?? undefined)) : undefined}
-                style={[styles.onboardingButton, !isEmailValid && styles.onboardingButtonDisabled]}
+                onPress={canContinue ? () => onComplete(onboardingPayload(selectedSetup ?? undefined)) : undefined}
+                style={[styles.onboardingButton, !canContinue && styles.onboardingButtonDisabled]}
               >
-                <Text style={[styles.onboardingButtonText, !isEmailValid && styles.onboardingButtonTextDisabled]}>
-                  {estimate ? copy.useEstimate : copy.startNow}
+                <Text style={[styles.onboardingButtonText, !canContinue && styles.onboardingButtonTextDisabled]}>
+                  {selectedSetup ? copy.useEstimate : copy.startNow}
                 </Text>
-              </Pressable>
-              <Pressable onPress={() => onComplete(onboardingPayload())} style={styles.ghostButton}>
-                <Text style={styles.ghostButtonText}>{copy.skipForNow}</Text>
               </Pressable>
             </View>
           </View>
         </ScrollView>
       </SafeAreaView>
+    </View>
+  );
+}
+
+function InstallTour({
+  language,
+  visible,
+  activeTab,
+  onNavigate,
+  onDone,
+}: {
+  language: AppLanguage;
+  visible: boolean;
+  activeTab: AppTab;
+  onNavigate: (tab: AppTab) => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const copy = COPY[language];
+  const [stepIndex, setStepIndex] = useState(0);
+  const steps = [
+    {
+      tab: 'home' as AppTab,
+      title: copy.installTourHomeTitle,
+      body: copy.installTourHomeBody,
+    },
+    {
+      tab: 'history' as AppTab,
+      title: copy.installTourHistoryTitle,
+      body: copy.installTourHistoryBody,
+    },
+    {
+      tab: 'answers' as AppTab,
+      title: copy.installTourAnswersTitle,
+      body: copy.installTourAnswersBody,
+    },
+    {
+      tab: 'more' as AppTab,
+      title: copy.installTourMoreTitle,
+      body: copy.installTourMoreBody,
+    },
+  ];
+  const tabLabels: Record<AppTab, string> = {
+    home: copy.homeTab,
+    history: copy.historyTab,
+    fasting: copy.fastingTab,
+    answers: copy.answersTab,
+    more: copy.moreTab,
+  };
+
+  useEffect(() => {
+    if (visible) {
+      setStepIndex(0);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    onNavigate(steps[stepIndex].tab);
+  }, [visible, stepIndex, onNavigate]);
+
+  if (!visible) return null;
+
+  const currentStep = steps[stepIndex];
+  const isLastStep = stepIndex === steps.length - 1;
+
+  const handleNext = async () => {
+    if (!isLastStep) {
+      setStepIndex((current) => Math.min(current + 1, steps.length - 1));
+      return;
+    }
+
+    await onDone();
+  };
+
+  return (
+    <View style={styles.tourBannerWrap} pointerEvents="box-none">
+      <View style={styles.tourBanner}>
+        <View style={styles.tourHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.tourEyebrow}>
+              {copy.installTourTitle} {stepIndex + 1}/{steps.length}
+            </Text>
+            <Text style={[styles.tourTitle, isArabic(language) && styles.alignRight]}>
+              {currentStep.title}
+            </Text>
+          </View>
+          <Pressable onPress={onDone} style={styles.tourSkipButton}>
+            <Text style={styles.tourSkipText}>{copy.installTourSkip}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.tourTabRow}>
+          {(['home', 'history', 'answers', 'more'] as AppTab[]).map((tab) => (
+            <View
+              key={tab}
+              style={[styles.tourTabChip, activeTab === tab && styles.tourTabChipActive]}
+            >
+              <Text style={[styles.tourTabChipText, activeTab === tab && styles.tourTabChipTextActive]}>
+                {tabLabels[tab]}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        <Text style={[styles.tourBody, isArabic(language) && styles.alignRight]}>
+          {currentStep.body}
+        </Text>
+
+        <View style={styles.tourDots}>
+          {steps.map((_, index) => (
+            <View
+              key={index}
+              style={[styles.tourDot, index === stepIndex && styles.tourDotActive]}
+            />
+          ))}
+        </View>
+
+        <View style={styles.tourActions}>
+          <Pressable onPress={handleNext} style={styles.onboardingButton}>
+            <Text style={styles.onboardingButtonText}>{isLastStep ? copy.installTourDone : copy.installTourNext}</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
@@ -1786,6 +2117,9 @@ function SetupField({
 
 function ShafiiEstimateFields({
   language,
+  mode,
+  manualMissedDays,
+  onManualMissedDaysChange,
   latestPubertyAge,
   regularPrayerAge,
   menstruationDays,
@@ -1795,6 +2129,9 @@ function ShafiiEstimateFields({
   estimate,
 }: {
   language: AppLanguage;
+  mode: 'estimate' | 'manual';
+  manualMissedDays: string;
+  onManualMissedDaysChange: (value: string) => void;
   latestPubertyAge: string;
   regularPrayerAge: string;
   menstruationDays: string;
@@ -1804,33 +2141,47 @@ function ShafiiEstimateFields({
   estimate: OnboardingSetup | null;
 }) {
   const copy = COPY[language];
+  const [showWhy, setShowWhy] = useState(false);
 
   return (
     <>
-      <SetupField
-        label={copy.latestPubertyAge}
-        hint={copy.latestPubertyHint}
-        value={latestPubertyAge}
-        onChangeText={onLatestPubertyAgeChange}
-        placeholder="15"
-        language={language}
-      />
-      <SetupField
-        label={copy.regularPrayerAge}
-        hint={copy.regularPrayerHint}
-        value={regularPrayerAge}
-        onChangeText={onRegularPrayerAgeChange}
-        placeholder="18"
-        language={language}
-      />
-      <SetupField
-        label={copy.menstruationDays}
-        hint={copy.menstruationHint}
-        value={menstruationDays}
-        onChangeText={onMenstruationDaysChange}
-        placeholder="0"
-        language={language}
-      />
+      {mode === 'manual' ? (
+        <SetupField
+          label={copy.manualDaysLabel}
+          hint={copy.manualDaysHint}
+          value={manualMissedDays}
+          onChangeText={onManualMissedDaysChange}
+          placeholder="0"
+          language={language}
+        />
+      ) : (
+        <>
+          <SetupField
+            label={copy.latestPubertyAge}
+            hint={copy.latestPubertyHint}
+            value={latestPubertyAge}
+            onChangeText={onLatestPubertyAgeChange}
+            placeholder="15"
+            language={language}
+          />
+          <SetupField
+            label={copy.regularPrayerAge}
+            hint={copy.regularPrayerHint}
+            value={regularPrayerAge}
+            onChangeText={onRegularPrayerAgeChange}
+            placeholder="18"
+            language={language}
+          />
+          <SetupField
+            label={copy.menstruationDays}
+            hint={copy.menstruationHint}
+            value={menstruationDays}
+            onChangeText={onMenstruationDaysChange}
+            placeholder="0"
+            language={language}
+          />
+        </>
+      )}
 
       {estimate?.missedDays !== undefined ? (
         <View style={styles.estimateResult}>
@@ -1844,36 +2195,43 @@ function ShafiiEstimateFields({
       ) : null}
 
       <View style={styles.trustCard}>
-        <Text style={[styles.trustCardTitle, isArabic(language) && styles.alignRight]}>
-          {copy.onboardingTrustTitle}
-        </Text>
-        <Text style={[styles.trustCardBody, isArabic(language) && styles.alignRight]}>
-          {copy.onboardingTrustBody}
-        </Text>
-        {[copy.onboardingAssumption1, copy.onboardingAssumption2, copy.onboardingAssumption3].map(
-          (assumption) => (
-            <View key={assumption} style={styles.trustBulletRow}>
-              <View style={styles.trustBullet} />
-              <Text style={[styles.trustBulletText, isArabic(language) && styles.alignRight]}>
-                {assumption}
-              </Text>
+        <Pressable onPress={() => setShowWhy((current) => !current)} style={styles.trustToggleRow}>
+          <Text style={[styles.trustCardTitle, isArabic(language) && styles.alignRight]}>
+            {showWhy ? copy.onboardingWhyHide : copy.onboardingWhyShow}
+          </Text>
+          <Text style={styles.trustToggleIcon}>{showWhy ? '−' : '+'}</Text>
+        </Pressable>
+        {showWhy ? (
+          <>
+            <Text style={[styles.trustCardBody, isArabic(language) && styles.alignRight]}>
+              {copy.onboardingTrustBody}
+            </Text>
+            {[copy.onboardingAssumption1, copy.onboardingAssumption2, copy.onboardingAssumption3].map(
+              (assumption) => (
+                <View key={assumption} style={styles.trustBulletRow}>
+                  <View style={styles.trustBullet} />
+                  <Text style={[styles.trustBulletText, isArabic(language) && styles.alignRight]}>
+                    {assumption}
+                  </Text>
+                </View>
+              )
+            )}
+            <Text style={[styles.trustCardNote, isArabic(language) && styles.alignRight]}>
+              {copy.onboardingEditableNote}
+            </Text>
+            <View style={styles.trustLinks}>
+              {ONBOARDING_SOURCES[language].map((item) => (
+                <Pressable
+                  key={item.url}
+                  onPress={() => Linking.openURL(item.url)}
+                  style={styles.sourceChip}
+                >
+                  <Text style={styles.sourceChipText}>{item.label}</Text>
+                </Pressable>
+              ))}
             </View>
-          )
-        )}
-        <Text style={[styles.trustCardNote, isArabic(language) && styles.alignRight]}>
-          {copy.onboardingEditableNote}
-        </Text>
-        <View style={styles.trustLinks}>
-          {ONBOARDING_SOURCES[language].map((item) => (
-            <Pressable
-              key={item.url}
-              onPress={() => Linking.openURL(item.url)}
-              style={styles.sourceChip}
-            >
-              <Text style={styles.sourceChipText}>{item.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+          </>
+        ) : null}
       </View>
     </>
   );
@@ -1899,7 +2257,6 @@ function MainApp({
   authBusyProvider,
   authError,
   onGoogleSignIn,
-  onFacebookSignIn,
   onSignOut,
   notificationEnabled,
   notificationHour,
@@ -1910,6 +2267,8 @@ function MainApp({
   onSendTestReminder,
   onUpdateTarget,
   onDefaultDailyAddDaysChange,
+  showInstallTour,
+  onFinishInstallTour,
   handleExport,
   handleImport,
 }: {
@@ -1932,7 +2291,6 @@ function MainApp({
   authBusyProvider: 'google' | 'facebook' | null;
   authError: string | null;
   onGoogleSignIn: () => void;
-  onFacebookSignIn: () => void;
   onSignOut: () => void;
   notificationEnabled: boolean;
   notificationHour: number;
@@ -1943,6 +2301,8 @@ function MainApp({
   onSendTestReminder: () => Promise<void>;
   onUpdateTarget: (setup: OnboardingSetup) => void;
   onDefaultDailyAddDaysChange: (defaultDailyAddDays: number) => void;
+  showInstallTour: boolean;
+  onFinishInstallTour: () => Promise<void> | void;
   handleExport: () => void;
   handleImport: () => void;
 }) {
@@ -1986,12 +2346,20 @@ function MainApp({
       finishDate,
     };
   }, [state.defaultDailyAddDays, state.log, totals]);
+  const developerName = 'Ghassan Nabary';
+  const developerEmail = 'ghassan.nabary95@gmail.com';
 
   useEffect(() => {
     if (!state.fastingEnabled && activeTab === 'fasting') {
       setActiveTab('home');
     }
   }, [activeTab, state.fastingEnabled]);
+
+  const tourActiveTab = useMemo(() => {
+    if (!showInstallTour) return activeTab;
+    if (activeTab === 'fasting' && !state.fastingEnabled) return 'home';
+    return activeTab;
+  }, [activeTab, showInstallTour, state.fastingEnabled]);
 
   const completeFastingDay = () => {
     setState((current) => applyFastingCompletion(current));
@@ -2032,6 +2400,7 @@ function MainApp({
                 copy={copy}
                 totals={totals}
                 progress={progress}
+                defaultDailyAddDays={state.defaultDailyAddDays}
                 language={state.language}
               />
 
@@ -2186,7 +2555,6 @@ function MainApp({
               authBusyProvider={authBusyProvider}
               authError={authError}
               onGoogleSignIn={onGoogleSignIn}
-              onFacebookSignIn={onFacebookSignIn}
               onSignOut={onSignOut}
               notes={state.notes}
               onNotesChange={(notes) => setState((current) => ({ ...current, notes }))}
@@ -2201,6 +2569,13 @@ function MainApp({
           onChange={setActiveTab}
           copy={copy}
           fastingEnabled={state.fastingEnabled}
+        />
+        <InstallTour
+          language={state.language}
+          visible={showInstallTour}
+          activeTab={tourActiveTab}
+          onNavigate={setActiveTab}
+          onDone={onFinishInstallTour}
         />
       </View>
     </SafeAreaView>
@@ -2638,7 +3013,6 @@ function MoreTab({
   authBusyProvider,
   authError,
   onGoogleSignIn,
-  onFacebookSignIn,
   onSignOut,
   notes,
   onNotesChange,
@@ -2672,7 +3046,6 @@ function MoreTab({
   authBusyProvider: 'google' | 'facebook' | null;
   authError: string | null;
   onGoogleSignIn: () => void;
-  onFacebookSignIn: () => void;
   onSignOut: () => void;
   notes: string;
   onNotesChange: (notes: string) => void;
@@ -2715,6 +3088,27 @@ function MoreTab({
     setManualNotificationMinute(String(notificationMinute).padStart(2, '0'));
   }, [notificationHour, notificationMinute]);
 
+  const parsedManualNotificationHour =
+    manualNotificationHour.trim() === '' ? null : Number(manualNotificationHour.trim());
+  const parsedManualNotificationMinute =
+    manualNotificationMinute.trim() === '' ? null : Number(manualNotificationMinute.trim());
+  const isReminderTimeValid =
+    Number.isInteger(parsedManualNotificationHour) &&
+    Number.isInteger(parsedManualNotificationMinute) &&
+    parsedManualNotificationHour !== null &&
+    parsedManualNotificationMinute !== null &&
+    parsedManualNotificationHour >= 0 &&
+    parsedManualNotificationHour <= 23 &&
+    parsedManualNotificationMinute >= 0 &&
+    parsedManualNotificationMinute <= 59;
+  const isReminderTimeChanged =
+    isReminderTimeValid &&
+    (parsedManualNotificationHour !== notificationHour || parsedManualNotificationMinute !== notificationMinute);
+  const formattedDraftReminderTime =
+    isReminderTimeValid && parsedManualNotificationHour !== null && parsedManualNotificationMinute !== null
+      ? formatReminderTime(parsedManualNotificationHour, parsedManualNotificationMinute, language)
+      : null;
+
   useEffect(() => {
     setManualDefaultAddDays(String(defaultDailyAddDays));
   }, [defaultDailyAddDays]);
@@ -2728,17 +3122,24 @@ function MoreTab({
   }, [fastingKafarahDays]);
 
   const handleSaveManualTarget = () => {
-    const parsedDays = Number(manualTargetDays);
-    if (Number.isNaN(parsedDays) || manualTargetDays.trim() === '') return;
+    const trimmedValue = manualTargetDays.trim();
+    const parsedDays = Number(trimmedValue);
+    if (!trimmedValue || !Number.isFinite(parsedDays)) {
+      Alert.alert(copy.targetSettingsTitle, copy.numberFieldInvalid);
+      return;
+    }
+
+    const nextDays = Math.max(0, Math.round(parsedDays));
 
     onUpdateTarget({
-      missedDays: Math.max(0, Math.round(parsedDays)),
-      target: countsFromMissedDays(Math.max(0, Math.round(parsedDays))),
+      missedDays: nextDays,
+      target: countsFromMissedDays(nextDays),
       notes:
         language === 'ar'
-          ? `تعديل يدوي لهدف القضاء: ${Math.max(0, Math.round(parsedDays))} يوم.`
-          : `Manual qadaa target update: ${Math.max(0, Math.round(parsedDays))} days.`,
+          ? `تعديل يدوي لهدف القضاء: ${nextDays} يوم.`
+          : `Manual qadaa target update: ${nextDays} days.`,
     });
+    Alert.alert(copy.targetSettingsTitle, copy.targetSaved);
   };
 
   const handleSaveEstimateTarget = () => {
@@ -2748,11 +3149,36 @@ function MoreTab({
   };
 
   const handleSaveDefaultAddDays = () => {
-    const parsedDays = Number(manualDefaultAddDays);
-    if (Number.isNaN(parsedDays) || manualDefaultAddDays.trim() === '') return;
-    const nextDays = Math.max(1, Math.round(parsedDays));
+    const trimmedValue = manualDefaultAddDays.trim();
+    const parsedDays = Number(trimmedValue);
+    if (!trimmedValue || !Number.isFinite(parsedDays)) {
+      Alert.alert(copy.defaultAddTitle, copy.numberFieldInvalid);
+      return;
+    }
+    const nextDays = Math.max(0, Math.round(parsedDays));
     onDefaultDailyAddDaysChange(nextDays);
+    Alert.alert(copy.defaultAddTitle, copy.defaultAddSaved);
   };
+
+  const trimmedManualTargetDays = manualTargetDays.trim();
+  const parsedManualTargetDays = trimmedManualTargetDays === '' ? null : Number(trimmedManualTargetDays);
+  const nextManualTargetDays =
+    parsedManualTargetDays !== null && Number.isFinite(parsedManualTargetDays)
+      ? Math.max(0, Math.round(parsedManualTargetDays))
+      : null;
+  const isManualTargetValid = nextManualTargetDays !== null;
+  const isManualTargetChanged = nextManualTargetDays !== null && nextManualTargetDays !== currentTargetDays;
+
+  const trimmedManualDefaultAddDays = manualDefaultAddDays.trim();
+  const parsedManualDefaultAddDays =
+    trimmedManualDefaultAddDays === '' ? null : Number(trimmedManualDefaultAddDays);
+  const nextManualDefaultAddDays =
+    parsedManualDefaultAddDays !== null && Number.isFinite(parsedManualDefaultAddDays)
+      ? Math.max(0, Math.round(parsedManualDefaultAddDays))
+      : null;
+  const isManualDefaultAddValid = nextManualDefaultAddDays !== null;
+  const isManualDefaultAddChanged =
+    nextManualDefaultAddDays !== null && nextManualDefaultAddDays !== defaultDailyAddDays;
 
   const handleSaveReminderTime = async () => {
     const parsedHour = Number(manualNotificationHour);
@@ -2891,20 +3317,6 @@ function MoreTab({
                       <Text style={styles.oauthButtonPrimaryText}>{copy.connectGoogle}</Text>
                     </View>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={onFacebookSignIn}
-                    activeOpacity={0.85}
-                    style={styles.oauthButtonSecondary}
-                  >
-                    <View style={styles.oauthButtonRow}>
-                      {authBusyProvider === 'facebook' ? (
-                        <ActivityIndicator color={COLORS.cream} />
-                      ) : (
-                        <Text style={styles.oauthButtonBrandSecondary}>f</Text>
-                      )}
-                      <Text style={styles.oauthButtonSecondaryText}>{copy.connectFacebook}</Text>
-                    </View>
-                  </TouchableOpacity>
                 </View>
               </>
             )}
@@ -2955,13 +3367,23 @@ function MoreTab({
             </Text>
             <TextInput
               value={manualTargetDays}
-              onChangeText={(next) => setManualTargetDays(next.replace(/[^0-9.]/g, ''))}
+              onChangeText={(next) => setManualTargetDays(next.replace(/[^0-9]/g, ''))}
               style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
               keyboardType="number-pad"
               placeholder="0"
               placeholderTextColor={COLORS.mutedText}
             />
-            <Pressable onPress={handleSaveManualTarget} style={styles.shareButton}>
+            <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+              {copy.manualDaysHint}
+            </Text>
+            <Pressable
+              onPress={handleSaveManualTarget}
+              disabled={!isManualTargetValid || !isManualTargetChanged}
+              style={[
+                styles.shareButton,
+                (!isManualTargetValid || !isManualTargetChanged) && styles.actionButtonDisabled,
+              ]}
+            >
               <Text style={styles.shareButtonText}>{copy.saveTarget}</Text>
             </Pressable>
             <Pressable onPress={() => setShowTargetModal(true)} style={styles.secondaryButton}>
@@ -2978,18 +3400,41 @@ function MoreTab({
             {copy.defaultAddHint}
           </Text>
           <View style={styles.partnerCard}>
+            <View style={styles.notificationStatusRow}>
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.currentSettingLabel}
+              </Text>
+              <Text style={styles.notificationTimeValue}>
+                {defaultDailyAddDays > 0
+                  ? `${formatDecimal(defaultDailyAddDays)} ${copy.dayUnit}`
+                  : copy.defaultAddOff}
+              </Text>
+            </View>
             <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
               {copy.defaultAddLabel}
             </Text>
             <TextInput
               value={manualDefaultAddDays}
-              onChangeText={(next) => setManualDefaultAddDays(next.replace(/[^0-9.]/g, ''))}
+              onChangeText={(next) => setManualDefaultAddDays(next.replace(/[^0-9]/g, ''))}
               style={[styles.partnerInput, isArabic(language) && styles.notesInputArabic]}
               keyboardType="number-pad"
               placeholder="1"
               placeholderTextColor={COLORS.mutedText}
             />
-            <Pressable onPress={handleSaveDefaultAddDays} style={styles.shareButton}>
+            <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+              {copy.defaultAddHint}
+            </Text>
+            <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+              {copy.defaultAddEditableNote}
+            </Text>
+            <Pressable
+              onPress={handleSaveDefaultAddDays}
+              disabled={!isManualDefaultAddValid || !isManualDefaultAddChanged}
+              style={[
+                styles.shareButton,
+                (!isManualDefaultAddValid || !isManualDefaultAddChanged) && styles.actionButtonDisabled,
+              ]}
+            >
               <Text style={styles.shareButtonText}>{copy.defaultAddSave}</Text>
             </Pressable>
           </View>
@@ -3004,73 +3449,117 @@ function MoreTab({
           {copy.notificationHint}
         </Text>
         <View style={styles.settingsPanel}>
-          <View style={styles.partnerCard}>
-            <View style={styles.notificationStatusRow}>
-              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-                {copy.notificationStatusLabel}
-              </Text>
-              <Text style={styles.notificationStatusValue}>
-                {notificationEnabled ? copy.notificationStatusOn : copy.notificationStatusOff}
-              </Text>
-            </View>
-            <View style={styles.notificationStatusRow}>
-              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-                {copy.notificationTimeLabel}
-              </Text>
-              <Text style={styles.notificationTimeValue}>{formattedReminderTime}</Text>
-            </View>
-            <View style={styles.notificationTimeEditorRow}>
-              <View style={styles.notificationTimeField}>
-                <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-                  {copy.notificationHourLabel}
+          <View style={styles.notificationCard}>
+            <View style={styles.notificationHeaderRow}>
+              <View style={styles.notificationHeaderText}>
+                <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
+                  {copy.notificationTitle}
                 </Text>
-                <TextInput
-                  value={manualNotificationHour}
-                  onChangeText={(next) => setManualNotificationHour(next.replace(/[^0-9]/g, ''))}
-                  style={[
-                    styles.partnerInput,
-                    styles.notificationTimeInput,
-                    isArabic(language) && styles.notesInputArabic,
-                  ]}
-                  keyboardType="number-pad"
-                  placeholder="21"
-                  placeholderTextColor={COLORS.mutedText}
-                  maxLength={2}
-                />
+                <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+                  {copy.notificationHint}
+                </Text>
               </View>
-              <View style={styles.notificationTimeField}>
-                <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
-                  {copy.notificationMinuteLabel}
+              <View
+                style={[
+                  styles.notificationStatusBadge,
+                  notificationEnabled
+                    ? styles.notificationStatusBadgeOn
+                    : styles.notificationStatusBadgeOff,
+                ]}
+              >
+                <Text style={styles.notificationStatusBadgeText}>
+                  {notificationEnabled ? copy.notificationStatusOn : copy.notificationStatusOff}
                 </Text>
-                <TextInput
-                  value={manualNotificationMinute}
-                  onChangeText={(next) => setManualNotificationMinute(next.replace(/[^0-9]/g, ''))}
-                  style={[
-                    styles.partnerInput,
-                    styles.notificationTimeInput,
-                    isArabic(language) && styles.notesInputArabic,
-                  ]}
-                  keyboardType="number-pad"
-                  placeholder="00"
-                  placeholderTextColor={COLORS.mutedText}
-                  maxLength={2}
-                />
               </View>
             </View>
-            <Pressable onPress={handleSaveReminderTime} style={styles.shareButton}>
-              <Text style={styles.shareButtonText}>{copy.notificationSaveTime}</Text>
-            </Pressable>
-            <Pressable onPress={onSendTestReminder} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonText}>{copy.notificationTestReminder}</Text>
-            </Pressable>
-            <Pressable
-              onPress={notificationEnabled ? onDisableDailyReminder : onEnableDailyReminder}
-              style={notificationEnabled ? styles.secondaryButton : styles.shareButton}
-            >
-              <Text style={notificationEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
-                {notificationEnabled ? copy.disableNotification : copy.enableNotification}
+
+            <View style={styles.notificationSummaryGrid}>
+              <View style={styles.notificationSummaryItem}>
+                <Text style={[styles.notificationSummaryLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.notificationSavedTimeLabel}
+                </Text>
+                <Text style={styles.notificationSummaryValue}>{formattedReminderTime}</Text>
+              </View>
+              <View style={styles.notificationSummaryItem}>
+                <Text style={[styles.notificationSummaryLabel, isArabic(language) && styles.alignRight]}>
+                  {copy.notificationStatusLabel}
+                </Text>
+                <Text style={styles.notificationSummaryValue}>
+                  {notificationEnabled ? copy.notificationStatusOn : copy.notificationStatusOff}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.notificationEditorCard}>
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.notificationDraftTimeLabel}
               </Text>
-            </Pressable>
+              <View style={styles.notificationTimeEditorRow}>
+                <View style={styles.notificationTimeField}>
+                  <Text style={[styles.notificationFieldLabel, isArabic(language) && styles.alignRight]}>
+                    {copy.notificationHourLabel}
+                  </Text>
+                  <TextInput
+                    value={manualNotificationHour}
+                    onChangeText={(next) => setManualNotificationHour(next.replace(/[^0-9]/g, ''))}
+                    style={[
+                      styles.partnerInput,
+                      styles.notificationTimeInput,
+                      isArabic(language) && styles.notesInputArabic,
+                    ]}
+                    keyboardType="number-pad"
+                    placeholder="21"
+                    placeholderTextColor={COLORS.mutedText}
+                    maxLength={2}
+                  />
+                </View>
+                <View style={styles.notificationTimeField}>
+                  <Text style={[styles.notificationFieldLabel, isArabic(language) && styles.alignRight]}>
+                    {copy.notificationMinuteLabel}
+                  </Text>
+                  <TextInput
+                    value={manualNotificationMinute}
+                    onChangeText={(next) => setManualNotificationMinute(next.replace(/[^0-9]/g, ''))}
+                    style={[
+                      styles.partnerInput,
+                      styles.notificationTimeInput,
+                      isArabic(language) && styles.notesInputArabic,
+                    ]}
+                    keyboardType="number-pad"
+                    placeholder="00"
+                    placeholderTextColor={COLORS.mutedText}
+                    maxLength={2}
+                  />
+                </View>
+              </View>
+              <Text style={[styles.notificationPreviewText, isArabic(language) && styles.alignRight]}>
+                {formattedDraftReminderTime ?? copy.notificationTimeInvalid}
+              </Text>
+            </View>
+
+            <View style={styles.notificationActionsColumn}>
+              <Pressable
+                onPress={handleSaveReminderTime}
+                disabled={!isReminderTimeValid || !isReminderTimeChanged}
+                style={[
+                  styles.shareButton,
+                  (!isReminderTimeValid || !isReminderTimeChanged) && styles.actionButtonDisabled,
+                ]}
+              >
+                <Text style={styles.shareButtonText}>{copy.notificationSaveTime}</Text>
+              </Pressable>
+              <Pressable onPress={onSendTestReminder} style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonText}>{copy.notificationTestReminder}</Text>
+              </Pressable>
+              <Pressable
+                onPress={notificationEnabled ? onDisableDailyReminder : onEnableDailyReminder}
+                style={notificationEnabled ? styles.secondaryButton : styles.shareButton}
+              >
+                <Text style={notificationEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
+                  {notificationEnabled ? copy.disableNotification : copy.enableNotification}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </View>
@@ -3180,6 +3669,42 @@ function MoreTab({
               <Text style={styles.backupButtonText}>{copy.importBackup}</Text>
             </Pressable>
           </View>
+
+          <View style={styles.settingsDivider} />
+
+          <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
+            {copy.contactDeveloperTitle}
+          </Text>
+          <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+            {copy.contactDeveloperHint}
+          </Text>
+          <View style={styles.developerCard}>
+            <View style={styles.developerRow}>
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.developerNameLabel}
+              </Text>
+              <Text style={[styles.developerValue, isArabic(language) && styles.alignRight]}>
+                {developerName}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => Linking.openURL(`mailto:${developerEmail}`)}
+              style={styles.developerEmailButton}
+            >
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.developerEmailLabel}
+              </Text>
+              <Text style={[styles.developerEmailValue, isArabic(language) && styles.alignRight]}>
+                {developerEmail}
+              </Text>
+            </Pressable>
+            <View style={styles.versionRow}>
+              <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
+                {copy.appVersionLabel}
+              </Text>
+              <Text style={styles.developerValue}>{APP_VERSION}</Text>
+            </View>
+          </View>
         </View>
       </View>
     </>
@@ -3190,6 +3715,7 @@ function ProgressOverview({
   copy,
   totals,
   progress,
+  defaultDailyAddDays,
   language,
 }: {
   copy: CopyBlock;
@@ -3202,6 +3728,7 @@ function ProgressOverview({
     estimatedDaysLeft: number | null;
     finishDate: Date | null;
   };
+  defaultDailyAddDays: number;
   language: AppLanguage;
 }) {
   return (
@@ -3243,7 +3770,21 @@ function ProgressOverview({
             </Text>
           </View>
         </View>
-        <ProgressStat label={copy.finish} value={formatFinishDate(progress.finishDate, copy.needHistory)} />
+        <ProgressStat
+          label={copy.defaultAddIndicator}
+          value={
+            defaultDailyAddDays > 0
+              ? `${formatDecimal(defaultDailyAddDays)} ${copy.dayUnit}`
+              : copy.defaultAddOff
+          }
+        />
+        <ProgressStat
+          label={copy.finish}
+          value={formatFinishDate(progress.finishDate, defaultDailyAddDays > 0 ? copy.needHistory : copy.defaultAddOff)}
+        />
+        <Text style={[styles.progressFootnote, isArabic(language) && styles.alignRight]}>
+          {copy.defaultAddMainNote}
+        </Text>
       </View>
     </View>
   );
@@ -3780,6 +4321,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  modeToggleRow: {
+    gap: 8,
+  },
+  modeToggle: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modeToggleButton: {
+    flex: 1,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '24',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  modeToggleButtonActive: {
+    backgroundColor: COLORS.gold,
+    borderColor: COLORS.gold,
+  },
+  modeToggleButtonText: {
+    color: COLORS.cream,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  modeToggleButtonTextActive: {
+    color: COLORS.nightBlue,
+  },
   setupInput: {
     minWidth: 80,
     textAlign: 'center',
@@ -3815,10 +4385,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gold + '1a',
   },
+  trustToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
   trustCardTitle: {
     color: COLORS.cream,
     fontSize: 15,
     fontWeight: '800',
+  },
+  trustToggleIcon: {
+    color: COLORS.lightGold,
+    fontSize: 22,
+    lineHeight: 22,
+    fontWeight: '700',
   },
   trustCardBody: {
     color: COLORS.mutedText,
@@ -3888,6 +4470,109 @@ const styles = StyleSheet.create({
   },
   onboardingButtonTextDisabled: {
     color: 'rgba(11, 34, 28, 0.65)',
+  },
+  tourBannerWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 84,
+    paddingHorizontal: 16,
+    zIndex: 30,
+    pointerEvents: 'box-none',
+  },
+  tourBanner: {
+    backgroundColor: 'rgba(13, 43, 32, 0.96)',
+    borderRadius: 24,
+    padding: 18,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '1f',
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  tourHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  tourEyebrow: {
+    color: COLORS.lightGold,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  tourTitle: {
+    color: COLORS.cream,
+    fontSize: 24,
+    fontWeight: '800',
+    lineHeight: 30,
+  },
+  tourSkipButton: {
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '22',
+  },
+  tourSkipText: {
+    color: COLORS.cream,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  tourTabRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tourTabChip: {
+    borderRadius: 999,
+    backgroundColor: COLORS.inputBg,
+    borderWidth: 1,
+    borderColor: COLORS.gold + '22',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  tourTabChipActive: {
+    backgroundColor: COLORS.gold,
+    borderColor: COLORS.gold,
+  },
+  tourTabChipText: {
+    color: COLORS.cream,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  tourTabChipTextActive: {
+    color: COLORS.nightBlue,
+  },
+  tourBody: {
+    color: COLORS.mutedText,
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 8,
+  },
+  tourDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  tourDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.gold + '55',
+  },
+  tourDotActive: {
+    width: 22,
+    backgroundColor: COLORS.lightGold,
+  },
+  tourActions: {
+    gap: 10,
   },
   ghostButton: {
     borderRadius: 14,
@@ -4125,6 +4810,12 @@ const styles = StyleSheet.create({
   progressStatsRow: {
     flexDirection: 'row',
     gap: 10,
+  },
+  progressFootnote: {
+    color: COLORS.mutedText,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
   },
   progressStat: {
     flex: 1,
@@ -4656,6 +5347,75 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 16,
   },
+  notificationCard: {
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 18,
+    padding: 16,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '12',
+  },
+  notificationHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  notificationHeaderText: {
+    flex: 1,
+    gap: 4,
+  },
+  notificationStatusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+  },
+  notificationStatusBadgeOn: {
+    backgroundColor: COLORS.success + '1A',
+    borderColor: COLORS.success + '55',
+  },
+  notificationStatusBadgeOff: {
+    backgroundColor: COLORS.gold + '14',
+    borderColor: COLORS.gold + '33',
+  },
+  notificationStatusBadgeText: {
+    color: COLORS.cream,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  notificationSummaryGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  notificationSummaryItem: {
+    flex: 1,
+    backgroundColor: COLORS.darkGreen,
+    borderRadius: 14,
+    padding: 14,
+    gap: 6,
+  },
+  notificationSummaryLabel: {
+    color: COLORS.mutedText,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  notificationSummaryValue: {
+    color: COLORS.cream,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  notificationEditorCard: {
+    backgroundColor: COLORS.darkGreen,
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+  },
+  notificationFieldLabel: {
+    color: COLORS.mutedText,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   notificationStatusValue: {
     color: COLORS.lightGold,
     fontSize: 14,
@@ -4677,6 +5437,16 @@ const styles = StyleSheet.create({
   notificationTimeInput: {
     flex: 0,
     textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  notificationPreviewText: {
+    color: COLORS.lightGold,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  notificationActionsColumn: {
+    gap: 10,
   },
   accountCard: {
     backgroundColor: COLORS.inputBg,
@@ -4801,6 +5571,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gold + '22',
   },
+  actionButtonDisabled: {
+    opacity: 0.48,
+  },
   shareButtonText: {
     color: COLORS.cream,
     fontSize: 14,
@@ -4869,5 +5642,48 @@ const styles = StyleSheet.create({
     color: COLORS.cream,
     fontSize: 13,
     fontWeight: '600',
+  },
+  developerCard: {
+    backgroundColor: 'rgba(247, 243, 234, 0.05)',
+    borderRadius: 18,
+    padding: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '12',
+  },
+  developerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'center',
+  },
+  developerEmailButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  developerValue: {
+    color: COLORS.cream,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  developerEmailValue: {
+    color: COLORS.lightGold,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  versionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    alignItems: 'center',
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.lightGold + '10',
+    marginTop: 2,
   },
 });
