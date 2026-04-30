@@ -6,7 +6,7 @@ export type PrayerLogEntry = {
   id: string;
   prayer: PrayerKey;
   createdAt: string;
-  source: 'quick_add' | 'manual_adjust' | 'full_day';
+  source: 'quick_add' | 'manual_adjust' | 'full_day' | 'auto_day';
   batchId?: string | null;
 };
 
@@ -53,6 +53,7 @@ export type AppState = {
   notificationMinute: number;
   notificationScheduleId: string | null;
   defaultDailyAddDays: number;
+  autoCountUpdatedAt: string | null;
   fastingEnabled: boolean;
   fastingTargetDays: number;
   fastingCompletedDays: number;
@@ -107,21 +108,12 @@ export const defaultAppState = (): AppState => ({
   notificationMinute: 0,
   notificationScheduleId: null,
   defaultDailyAddDays: 1,
+  autoCountUpdatedAt: null,
   fastingEnabled: false,
   fastingTargetDays: 0,
   fastingCompletedDays: 0,
   fastingLog: [],
   fastingKafarahDays: 0,
-});
-
-export const hydrateState = (raw?: Partial<AppState>): AppState => ({
-  ...defaultAppState(),
-  ...raw,
-  target: { ...emptyCounts(), ...(raw?.target ?? {}) },
-  completed: { ...emptyCounts(), ...(raw?.completed ?? {}) },
-  todayCompleted: { ...emptyCounts(), ...(raw?.todayCompleted ?? {}) },
-  log: raw?.log ?? [],
-  fastingLog: raw?.fastingLog ?? [],
 });
 
 export const totalCounts = (counts: PrayerCounts) =>
@@ -352,6 +344,115 @@ const formatDayKey = (date: Date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+export const calculateTodayCompleted = (
+  log: PrayerLogEntry[],
+  now = new Date()
+): PrayerCounts => {
+  const todayKey = formatDayKey(now);
+  const nextTodayCompleted = emptyCounts();
+
+  for (const entry of log) {
+    if (formatDayKey(new Date(entry.createdAt)) === todayKey) {
+      nextTodayCompleted[entry.prayer] += 1;
+    }
+  }
+
+  return nextTodayCompleted;
+};
+
+export const hydrateState = (raw?: Partial<AppState>, now = new Date()): AppState => {
+  const log = raw?.log ?? [];
+
+  return {
+    ...defaultAppState(),
+    ...raw,
+    target: { ...emptyCounts(), ...(raw?.target ?? {}) },
+    completed: { ...emptyCounts(), ...(raw?.completed ?? {}) },
+    todayCompleted: calculateTodayCompleted(log, now),
+    log,
+    fastingLog: raw?.fastingLog ?? [],
+  };
+};
+
+export const applyAutomaticQadaaProgress = (state: AppState, now = new Date()): AppState => {
+  const targetTotal = totalCounts(state.target);
+  const currentCompletedTotal = totalCounts(state.completed);
+
+  if (!state.autoCountUpdatedAt) {
+    return {
+      ...state,
+      autoCountUpdatedAt: now.toISOString(),
+    };
+  }
+
+  const lastUpdatedAt = new Date(state.autoCountUpdatedAt);
+  const elapsedMilliseconds = now.getTime() - lastUpdatedAt.getTime();
+  const elapsedDays = Math.floor(elapsedMilliseconds / (24 * 60 * 60 * 1000));
+
+  if (elapsedDays <= 0) {
+    return state;
+  }
+
+  if (state.defaultDailyAddDays <= 0 || targetTotal <= 0 || currentCompletedTotal >= targetTotal) {
+    return {
+      ...state,
+      autoCountUpdatedAt: now.toISOString(),
+    };
+  }
+
+  const requestedDays = elapsedDays * Math.max(0, Math.round(state.defaultDailyAddDays));
+  const availableDays = Math.max(
+    0,
+    Math.min(...PRAYER_KEYS.map((prayer) => state.target[prayer] - state.completed[prayer]))
+  );
+  const actualDays = Math.min(requestedDays, availableDays);
+
+  if (actualDays <= 0) {
+    return {
+      ...state,
+      autoCountUpdatedAt: now.toISOString(),
+    };
+  }
+
+  const nextCompleted = { ...state.completed };
+  const nextLogEntries: PrayerLogEntry[] = [];
+  let remainingDaysToApply = actualDays;
+
+  for (let dayOffset = 1; dayOffset <= elapsedDays && remainingDaysToApply > 0; dayOffset += 1) {
+    const entryDate = new Date(lastUpdatedAt.getTime() + (dayOffset - 1) * 24 * 60 * 60 * 1000);
+    entryDate.setHours(23, 59, 0, 0);
+
+    const daysForThisDate = Math.min(
+      Math.max(0, Math.round(state.defaultDailyAddDays)),
+      remainingDaysToApply
+    );
+
+    for (let batchIndex = 0; batchIndex < daysForThisDate; batchIndex += 1) {
+      for (const prayer of PRAYER_KEYS) {
+        nextCompleted[prayer] = Math.min(nextCompleted[prayer] + 1, state.target[prayer]);
+        nextLogEntries.push(
+          createLogEntry(
+            prayer,
+            'auto_day',
+            `auto-day-${formatDayKey(entryDate)}-${batchIndex}`,
+            new Date(entryDate.getTime() + batchIndex * 60 * 1000).toISOString()
+          )
+        );
+      }
+    }
+
+    remainingDaysToApply -= daysForThisDate;
+  }
+
+  return {
+    ...state,
+    completed: nextCompleted,
+    todayCompleted: calculateTodayCompleted([...nextLogEntries, ...state.log], now),
+    log: [...nextLogEntries, ...state.log],
+    autoCountUpdatedAt: now.toISOString(),
+  };
 };
 
 export const estimatePrayerPacePerDay = (log: PrayerLogEntry[], now = new Date()) => {

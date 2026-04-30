@@ -1,6 +1,7 @@
 import {
   applyFastingCompletion,
   applyFullDayCompletion,
+  applyAutomaticQadaaProgress,
   applyPrayerCompletion,
   applyPrayerCompletionForDay,
   calculateKafarahPoorPeople,
@@ -20,6 +21,7 @@ import {
   PRAYERS_PER_QADAA_DAY,
   remainingCounts,
   remainingFastingDays,
+  hydrateState,
   rollbackFastingCompletion,
   rollbackFullDayCompletion,
   rollbackPrayerCompletion,
@@ -61,6 +63,7 @@ describe('qadaa helpers', () => {
     expect(state.notificationMinute).toBe(0);
     expect(state.notificationScheduleId).toBeNull();
     expect(state.defaultDailyAddDays).toBe(1);
+    expect(state.autoCountUpdatedAt).toBeNull();
     expect(state.fastingEnabled).toBe(false);
     expect(state.fastingTargetDays).toBe(0);
     expect(state.fastingCompletedDays).toBe(0);
@@ -142,6 +145,60 @@ describe('qadaa helpers', () => {
     expect(state.log).toHaveLength(PRAYERS_PER_QADAA_DAY * 3);
     expect(state.completed.fajr).toBe(3);
     expect(state.completed.isha).toBe(3);
+  });
+
+  it('applies automatic qadaa days after whole days elapse', () => {
+    const state = {
+      ...defaultAppState(),
+      target: countsFromMissedDays(10),
+      autoCountUpdatedAt: '2026-04-20T08:00:00.000Z',
+      defaultDailyAddDays: 1,
+    };
+
+    const nextState = applyAutomaticQadaaProgress(state, new Date('2026-04-23T09:00:00.000Z'));
+
+    expect(totalCounts(nextState.completed)).toBe(PRAYERS_PER_QADAA_DAY * 3);
+    expect(nextState.log).toHaveLength(PRAYERS_PER_QADAA_DAY * 3);
+    expect(nextState.log[0].source).toBe('auto_day');
+    expect(nextState.log.every((entry) => entry.createdAt.slice(0, 10) !== '2026-04-23')).toBe(true);
+    expect(totalCounts(nextState.todayCompleted)).toBe(0);
+    expect(nextState.autoCountUpdatedAt).toBe('2026-04-23T09:00:00.000Z');
+  });
+
+  it('does not backfill automatic qadaa while automatic counting is off', () => {
+    const state = {
+      ...defaultAppState(),
+      target: countsFromMissedDays(10),
+      autoCountUpdatedAt: '2026-04-20T08:00:00.000Z',
+      defaultDailyAddDays: 0,
+    };
+
+    const nextState = applyAutomaticQadaaProgress(state, new Date('2026-04-23T09:00:00.000Z'));
+
+    expect(totalCounts(nextState.completed)).toBe(0);
+    expect(nextState.log).toHaveLength(0);
+    expect(nextState.autoCountUpdatedAt).toBe('2026-04-23T09:00:00.000Z');
+  });
+
+  it('recalculates todayCompleted from the log during hydration', () => {
+    const hydrated = hydrateState(
+      {
+        todayCompleted: { fajr: 5, dhuhr: 5, asr: 5, maghrib: 5, isha: 5 },
+        log: [
+          { id: 'today-fajr', prayer: 'fajr', createdAt: '2026-04-23T08:00:00.000Z', source: 'quick_add' },
+          { id: 'yesterday-isha', prayer: 'isha', createdAt: '2026-04-22T20:00:00.000Z', source: 'quick_add' },
+        ],
+      },
+      new Date('2026-04-23T12:00:00.000Z')
+    );
+
+    expect(hydrated.todayCompleted).toEqual({
+      fajr: 1,
+      dhuhr: 0,
+      asr: 0,
+      maghrib: 0,
+      isha: 0,
+    });
   });
 
   it('rolls back a prayer completion safely', () => {

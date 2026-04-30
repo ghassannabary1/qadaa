@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AppState as NativeAppState,
   ActivityIndicator,
   Alert,
   ImageBackground,
@@ -25,6 +26,7 @@ import {
 import {
   AppLanguage,
   AppState,
+  applyAutomaticQadaaProgress,
   applyFastingCompletion,
   applyFullDayCompletion,
   applyPrayerCompletion,
@@ -72,7 +74,6 @@ import {
   ensureNotificationInfrastructure,
   requestNotificationPermissionAsync,
   scheduleDailyReminderNotification,
-  sendTestReminderNotification,
 } from './src/utils/notifications';
 import { DividerOrnament } from './src/ui/patterns/DividerOrnament';
 
@@ -83,7 +84,9 @@ const HADITH_ROTATION_KEY = 'qadaa-daily-hadith-index-v1';
 const AUTO_BACKUP_INTERVAL = 30 * 1000;
 const DEFAULT_NOTES = defaultAppState().notes;
 const APP_BACKGROUND = require('./assets/patterns/backgrounds/app-islamic-floral-background.png');
-const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+const APP_VERSION = Constants.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '0.0.4';
+const APP_BUILD = Constants.nativeBuildVersion;
+const APP_VERSION_DISPLAY = APP_BUILD ? `${APP_VERSION} (${APP_BUILD})` : APP_VERSION;
 const DEVELOPER_NAME = 'Ghassan Nabary';
 const DEVELOPER_EMAIL = 'ghassan.nabary95@gmail.com';
 
@@ -278,9 +281,6 @@ type CopyBlock = {
   notificationSaveTime: string;
   notificationTimeInvalid: string;
   notificationTimeSaved: string;
-  notificationTestScheduled: string;
-  notificationTestReminder: string;
-  notificationTestSent: string;
   notificationStatusLabel: string;
   notificationStatusOn: string;
   notificationStatusOff: string;
@@ -410,7 +410,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     estimateBacklogBody: 'This fills the five daily prayers with the same number of missed days.',
     onboardingAutoCountTitle: 'Finish projection',
     onboardingAutoCountBody:
-      'By default, the app estimates your finish date as if you complete 1 qadaa day each day. This does not add progress automatically, and you can change it later in Settings, even to 0.',
+      'By default, the app counts 1 qadaa day automatically after each full day passes. This also updates your finish date, and you can change it later in Settings, even to 0.',
     useEstimate: 'Save and continue',
     startNow: 'Continue',
     skipForNow: 'Continue without estimate',
@@ -421,7 +421,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     daysLeft: 'Qadaa days left',
     overallProgress: 'Completed so far',
     progressTitle: 'Progress',
-    progressHint: 'See what is left and when you finish if you count one qadaa day each day.',
+    progressHint: 'See what is left and when you finish based on your automatic daily counting setting.',
     quickAddTitle: 'Quick add',
     prayerRowsTitle: 'Prayer details',
     showPrayerRows: 'Show prayer details',
@@ -514,9 +514,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationSaveTime: 'Save reminder time',
     notificationTimeInvalid: 'Enter a valid time using 24-hour values.',
     notificationTimeSaved: 'Reminder time updated.',
-    notificationTestScheduled: 'Test reminder scheduled for the next moment.',
-    notificationTestReminder: 'Send test reminder',
-    notificationTestSent: 'A test reminder has been sent.',
     notificationStatusLabel: 'Status',
     notificationStatusOn: 'On',
     notificationStatusOff: 'Off',
@@ -525,10 +522,10 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationTimeHelp: 'Save the time here, then turn the reminder on if it is off.',
     defaultAddTitle: 'Finish estimate',
     defaultAddHint:
-      'Choose how many qadaa days you hope to finish in a normal day. This changes the estimate only. The main button still counts one day at a time.',
+      'Choose how many qadaa days are counted automatically after each full day passes. The main button still counts one day at a time.',
     defaultAddLabel: 'Average qadaa days per day',
     defaultAddEditableNote: 'You can change this anytime in Settings, even to 0.',
-    defaultAddMainNote: 'Change this later in Settings.',
+    defaultAddMainNote: 'Automatic daily counting can be changed in Settings.',
     defaultAddSave: 'Save estimate',
     defaultAddSaved: 'Finish estimate updated.',
     defaultAddIndicator: 'Using per day',
@@ -651,7 +648,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     estimateBacklogBody: 'سيملأ هذا التقدير الصلوات الخمس اليومية بنفس عدد الأيام الفائتة.',
     onboardingAutoCountTitle: 'تقدير الانتهاء',
     onboardingAutoCountBody:
-      'يفترض التطبيق افتراضياً في تاريخ الانتهاء أنك تُنجز يوم قضاء واحداً كل يوم. هذا لا يضيف تقدّماً تلقائياً، ويمكنك تغييره لاحقاً من الإعدادات، وحتى جعله 0.',
+      'بشكل افتراضي يحتسب التطبيق يوم قضاء واحداً تلقائياً بعد مرور كل يوم كامل. وهذا يحدّث تاريخ الانتهاء أيضاً، ويمكنك تغييره لاحقاً من الإعدادات وحتى جعله 0.',
     useEstimate: 'احفظ وتابع',
     startNow: 'تابع',
     skipForNow: 'تابع بدون تقدير',
@@ -662,7 +659,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     daysLeft: 'أيام القضاء المتبقية',
     overallProgress: 'المنجز حتى الآن',
     progressTitle: 'التقدّم',
-    progressHint: 'شاهد المتبقي وتاريخ الانتهاء إذا احتسبت يوم قضاء واحداً كل يوم.',
+    progressHint: 'شاهد المتبقي وتاريخ الانتهاء بحسب إعداد العدّ اليومي التلقائي.',
     quickAddTitle: 'إضافة سريعة',
     prayerRowsTitle: 'تفاصيل الصلوات',
     showPrayerRows: 'إظهار تفاصيل الصلوات',
@@ -755,9 +752,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationSaveTime: 'حفظ وقت التذكير',
     notificationTimeInvalid: 'أدخل وقتاً صحيحاً بصيغة 24 ساعة.',
     notificationTimeSaved: 'تم تحديث وقت التذكير.',
-    notificationTestScheduled: 'تمت جدولة التذكير التجريبي للحظة التالية.',
-    notificationTestReminder: 'إرسال تذكير تجريبي',
-    notificationTestSent: 'تم إرسال تذكير تجريبي.',
     notificationStatusLabel: 'الحالة',
     notificationStatusOn: 'مفعّل',
     notificationStatusOff: 'متوقف',
@@ -766,10 +760,10 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     notificationTimeHelp: 'احفظ الوقت هنا، ثم فعّل التذكير إن كان متوقفاً.',
     defaultAddTitle: 'تقدير الانتهاء',
     defaultAddHint:
-      'اختر عدد أيام القضاء التي ترجّح إنجازها في يوم عادي. هذا يغيّر تقدير الانتهاء فقط، أما الزر الرئيسي فيبقى يوماً واحداً كل مرة.',
+      'اختر عدد أيام القضاء التي تُحتسب تلقائياً بعد مرور كل يوم كامل. أما الزر الرئيسي فيبقى يوماً واحداً كل مرة.',
     defaultAddLabel: 'متوسط أيام القضاء يومياً',
     defaultAddEditableNote: 'يمكنك تغيير هذا لاحقاً من الإعدادات، وحتى جعله 0.',
-    defaultAddMainNote: 'يمكنك تغييره لاحقاً من الإعدادات.',
+    defaultAddMainNote: 'يمكنك تغيير العدّ اليومي التلقائي من الإعدادات.',
     defaultAddSave: 'حفظ التقدير',
     defaultAddSaved: 'تم تحديث تقدير الانتهاء.',
     defaultAddIndicator: 'المعتمد يومياً',
@@ -1142,6 +1136,53 @@ export default function App() {
   const [authBusyProvider, setAuthBusyProvider] = useState<'google' | 'facebook' | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const syncReminderState = useCallback(
+    async (nextState: AppState) => {
+      if (!nextState.notificationEnabled) {
+        return nextState;
+      }
+
+      try {
+        const permissions = await Notifications.getPermissionsAsync();
+        const granted =
+          permissions.granted ||
+          (Platform.OS === 'ios' &&
+            (permissions.ios?.status === Notifications.IosAuthorizationStatus.AUTHORIZED ||
+              permissions.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL ||
+              permissions.ios?.status === Notifications.IosAuthorizationStatus.EPHEMERAL));
+
+        if (!granted) {
+          return {
+            ...nextState,
+            notificationEnabled: false,
+            notificationScheduleId: null,
+          };
+        }
+
+        const notificationScheduleId = await scheduleDailyReminderNotification({
+          hour: nextState.notificationHour,
+          minute: nextState.notificationMinute,
+          copy: buildDailyReminderCopy(COPY[nextState.language]),
+          existingIdentifier: nextState.notificationScheduleId,
+        });
+
+        return {
+          ...nextState,
+          notificationEnabled: true,
+          notificationScheduleId,
+        };
+      } catch (error) {
+        console.warn('Failed to restore reminder schedule', error);
+        return {
+          ...nextState,
+          notificationEnabled: false,
+          notificationScheduleId: null,
+        };
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     const loadState = async () => {
       try {
@@ -1158,7 +1199,9 @@ export default function App() {
             : 0;
 
         if (raw) {
-          setState(hydrateState(JSON.parse(raw) as Partial<AppState>));
+          const hydratedState = hydrateState(JSON.parse(raw) as Partial<AppState>);
+          const autoAppliedState = applyAutomaticQadaaProgress(hydratedState);
+          setState(await syncReminderState(autoAppliedState));
         }
         setInstallTourSeen(tourSeen === '1');
         setHadithIndex(nextHadithIndex);
@@ -1179,7 +1222,7 @@ export default function App() {
     };
 
     loadState();
-  }, []);
+  }, [syncReminderState]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -1192,6 +1235,20 @@ export default function App() {
 
     return () => clearInterval(backupTimer);
   }, [loaded, state]);
+
+  useEffect(() => {
+    if (!loaded) return undefined;
+
+    const subscription = NativeAppState.addEventListener('change', (status) => {
+      if (status === 'active') {
+        setState((current) => applyAutomaticQadaaProgress(current));
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [loaded]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -1335,7 +1392,7 @@ export default function App() {
 
     if (!granted) {
       Alert.alert(copy.notificationTitle, copy.notificationPermissionDenied);
-      return;
+      return false;
     }
 
     try {
@@ -1351,9 +1408,11 @@ export default function App() {
         notificationEnabled: true,
         notificationScheduleId,
       }));
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to schedule reminder.';
       Alert.alert(copy.notificationTitle, message);
+      return false;
     }
   }, [
     state.language,
@@ -1369,6 +1428,7 @@ export default function App() {
       notificationEnabled: false,
       notificationScheduleId: null,
     }));
+    return true;
   }, [state.notificationScheduleId]);
 
   const updateDailyReminderTime = useCallback(
@@ -1392,7 +1452,7 @@ export default function App() {
             notificationScheduleId,
           }));
           Alert.alert(copy.notificationTitle, `${copy.notificationTimeSaved} ${formattedTime}`);
-          return;
+          return true;
         }
 
         setState((current) => ({
@@ -1402,32 +1462,15 @@ export default function App() {
         }));
 
         Alert.alert(copy.notificationTitle, `${copy.notificationTimeSaved} ${formattedTime}`);
-        return;
+        return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to update reminder time.';
         Alert.alert(copy.notificationTitle, message);
+        return false;
       }
     },
     [state.language, state.notificationEnabled, state.notificationScheduleId]
   );
-
-  const sendTestReminder = useCallback(async () => {
-    const copy = COPY[state.language];
-    const granted = await requestNotificationPermissionAsync();
-
-    if (!granted) {
-      Alert.alert(copy.notificationTitle, copy.notificationPermissionDenied);
-      return;
-    }
-
-    try {
-      await sendTestReminderNotification(buildDailyReminderCopy(copy));
-      Alert.alert(copy.notificationTitle, copy.notificationTestScheduled);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to send test reminder.';
-      Alert.alert(copy.notificationTitle, message);
-    }
-  }, [state.language]);
 
   const resetToday = () => {
     const copy = COPY[state.language];
@@ -1458,6 +1501,7 @@ export default function App() {
           ? setup.profileEmail.trim()
           : current.profileEmail,
         notes: current.notes === DEFAULT_NOTES ? setup.notes : `${setup.notes}\n\n${current.notes}`,
+        autoCountUpdatedAt: current.autoCountUpdatedAt ?? new Date().toISOString(),
       }));
     }
 
@@ -1514,7 +1558,8 @@ export default function App() {
               return;
             }
 
-            setState(hydrateState(restored));
+            const hydratedRestoredState = hydrateState(restored);
+            setState(await syncReminderState(hydratedRestoredState));
             Alert.alert(copy.importBackup, copy.backupImportSuccess);
           } catch (error) {
             const message = error instanceof Error ? error.message : copy.backupImportFailure;
@@ -1523,13 +1568,14 @@ export default function App() {
         },
       },
     ]);
-  }, [state.language]);
+  }, [state.language, syncReminderState]);
 
   const handleUpdateTarget = useCallback((setup: OnboardingSetup) => {
     setState((current) => ({
       ...current,
       target: setup.target ?? current.target,
       notes: current.notes === DEFAULT_NOTES ? setup.notes : `${setup.notes}\n\n${current.notes}`,
+      autoCountUpdatedAt: current.autoCountUpdatedAt ?? new Date().toISOString(),
     }));
   }, []);
 
@@ -1637,7 +1683,6 @@ export default function App() {
             onEnableDailyReminder={enableDailyReminder}
             onDisableDailyReminder={disableDailyReminder}
             onNotificationTimeChange={updateDailyReminderTime}
-            onSendTestReminder={sendTestReminder}
             onUpdateTarget={handleUpdateTarget}
             onDefaultDailyAddDaysChange={(defaultDailyAddDays) =>
               setState((current) => ({ ...current, defaultDailyAddDays }))
@@ -1782,7 +1827,11 @@ function OnboardingScreen({
   return (
     <View style={styles.onboarding}>
       <SafeAreaView style={{ flex: 1 }}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.onboardingScrollContent}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.onboardingScrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.onboardingCard}>
             <View style={styles.onboardingHeaderOrnament}>
               <Text style={styles.onboardingBismillah}>بِسْمِ اللَّهِ</Text>
@@ -2269,7 +2318,6 @@ function MainApp({
   onEnableDailyReminder,
   onDisableDailyReminder,
   onNotificationTimeChange,
-  onSendTestReminder,
   onUpdateTarget,
   onDefaultDailyAddDaysChange,
   showInstallTour,
@@ -2300,10 +2348,9 @@ function MainApp({
   notificationEnabled: boolean;
   notificationHour: number;
   notificationMinute: number;
-  onEnableDailyReminder: () => void;
-  onDisableDailyReminder: () => void;
-  onNotificationTimeChange: (hour: number, minute: number) => Promise<void>;
-  onSendTestReminder: () => Promise<void>;
+  onEnableDailyReminder: () => Promise<boolean>;
+  onDisableDailyReminder: () => Promise<boolean>;
+  onNotificationTimeChange: (hour: number, minute: number) => Promise<boolean>;
   onUpdateTarget: (setup: OnboardingSetup) => void;
   onDefaultDailyAddDaysChange: (defaultDailyAddDays: number) => void;
   showInstallTour: boolean;
@@ -2374,7 +2421,11 @@ function MainApp({
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
       <View style={styles.appShell}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.headerCard}>
             <View style={styles.headerTopRow}>
               <Text style={styles.eyebrow}>{copy.dailyHadithTitle}</Text>
@@ -2534,6 +2585,7 @@ function MainApp({
               notificationMinute={notificationMinute}
               onEnableDailyReminder={onEnableDailyReminder}
               onDisableDailyReminder={onDisableDailyReminder}
+              onNotificationTimeChange={onNotificationTimeChange}
               target={state.target}
               onUpdateTarget={onUpdateTarget}
               defaultDailyAddDays={state.defaultDailyAddDays}
@@ -2997,7 +3049,6 @@ function MoreTab({
   onEnableDailyReminder,
   onDisableDailyReminder,
   onNotificationTimeChange,
-  onSendTestReminder,
   target,
   onUpdateTarget,
   defaultDailyAddDays,
@@ -3027,10 +3078,9 @@ function MoreTab({
   notificationEnabled: boolean;
   notificationHour: number;
   notificationMinute: number;
-  onEnableDailyReminder: () => void;
-  onDisableDailyReminder: () => void;
-  onNotificationTimeChange: (hour: number, minute: number) => Promise<void>;
-  onSendTestReminder: () => Promise<void>;
+  onEnableDailyReminder: () => Promise<boolean>;
+  onDisableDailyReminder: () => Promise<boolean>;
+  onNotificationTimeChange: (hour: number, minute: number) => Promise<boolean>;
   target: PrayerCounts;
   onUpdateTarget: (setup: OnboardingSetup) => void;
   defaultDailyAddDays: number;
@@ -3065,6 +3115,7 @@ function MoreTab({
   const [manualDefaultAddDays, setManualDefaultAddDays] = useState(String(defaultDailyAddDays));
   const [manualFastingTargetDays, setManualFastingTargetDays] = useState(String(fastingTargetDays));
   const [manualFastingKafarahDays, setManualFastingKafarahDays] = useState(String(fastingKafarahDays));
+  const [notificationSaveStatus, setNotificationSaveStatus] = useState<string | null>(null);
   const [showTargetModal, setShowTargetModal] = useState(false);
   const [latestPubertyAge, setLatestPubertyAge] = useState('15');
   const [regularPrayerAge, setRegularPrayerAge] = useState('');
@@ -3089,7 +3140,6 @@ function MoreTab({
     setManualNotificationHour(String(notificationHour));
     setManualNotificationMinute(String(notificationMinute).padStart(2, '0'));
   }, [notificationHour, notificationMinute]);
-
   const parsedManualNotificationHour =
     manualNotificationHour.trim() === '' ? null : Number(manualNotificationHour.trim());
   const parsedManualNotificationMinute =
@@ -3198,7 +3248,30 @@ function MoreTab({
       return;
     }
 
-    await onNotificationTimeChange(parsedHour, parsedMinute);
+    const saved = await onNotificationTimeChange(parsedHour, parsedMinute);
+
+    if (saved) {
+      setNotificationSaveStatus(
+        `${copy.notificationTimeSaved} ${formatReminderTime(parsedHour, parsedMinute, language)}`
+      );
+    }
+  };
+
+  const handleToggleReminder = async () => {
+    if (notificationEnabled) {
+      const disabled = await onDisableDailyReminder();
+
+      if (disabled) {
+        setNotificationSaveStatus(copy.notificationStatusOff);
+      }
+      return;
+    }
+
+    const enabled = await onEnableDailyReminder();
+
+    if (enabled) {
+      setNotificationSaveStatus(copy.notificationStatusOn);
+    }
   };
 
   const handleSaveFastingTarget = () => {
@@ -3221,7 +3294,11 @@ function MoreTab({
             <Text style={[styles.modalTitle, isArabic(language) && styles.alignRight]}>
               {copy.recalculateTitle}
             </Text>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScrollContent}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+              keyboardShouldPersistTaps="handled"
+            >
               <View style={styles.setupCard}>
                 <Text style={[styles.setupTitle, isArabic(language) && styles.alignRight]}>
                   {copy.onboardingEstimateTitle}
@@ -3503,7 +3580,10 @@ function MoreTab({
                   </Text>
                   <TextInput
                     value={manualNotificationHour}
-                    onChangeText={(next) => setManualNotificationHour(next.replace(/[^0-9]/g, ''))}
+                    onChangeText={(next) => {
+                      setManualNotificationHour(next.replace(/[^0-9]/g, ''));
+                      setNotificationSaveStatus(null);
+                    }}
                     style={[
                       styles.partnerInput,
                       styles.notificationTimeInput,
@@ -3521,7 +3601,10 @@ function MoreTab({
                   </Text>
                   <TextInput
                     value={manualNotificationMinute}
-                    onChangeText={(next) => setManualNotificationMinute(next.replace(/[^0-9]/g, ''))}
+                    onChangeText={(next) => {
+                      setManualNotificationMinute(next.replace(/[^0-9]/g, ''));
+                      setNotificationSaveStatus(null);
+                    }}
                     style={[
                       styles.partnerInput,
                       styles.notificationTimeInput,
@@ -3553,17 +3636,19 @@ function MoreTab({
               >
                 <Text style={styles.shareButtonText}>{copy.notificationSaveTime}</Text>
               </Pressable>
-              <Pressable onPress={onSendTestReminder} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>{copy.notificationTestReminder}</Text>
-              </Pressable>
               <Pressable
-                onPress={notificationEnabled ? onDisableDailyReminder : onEnableDailyReminder}
+                onPress={handleToggleReminder}
                 style={notificationEnabled ? styles.secondaryButton : styles.shareButton}
               >
                 <Text style={notificationEnabled ? styles.secondaryButtonText : styles.shareButtonText}>
                   {notificationEnabled ? copy.disableNotification : copy.enableNotification}
                 </Text>
               </Pressable>
+              {notificationSaveStatus ? (
+                <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
+                  {notificationSaveStatus}
+                </Text>
+              ) : null}
             </View>
           </View>
         </View>
@@ -3707,7 +3792,7 @@ function MoreTab({
               <Text style={[styles.settingsLabel, isArabic(language) && styles.alignRight]}>
                 {copy.appVersionLabel}
               </Text>
-              <Text style={styles.developerValue}>{APP_VERSION}</Text>
+              <Text style={styles.developerValue}>{APP_VERSION_DISPLAY}</Text>
             </View>
           </View>
         </View>
