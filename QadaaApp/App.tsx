@@ -1834,9 +1834,9 @@ function OnboardingScreen({
         >
           <View style={styles.onboardingCard}>
             <View style={styles.onboardingHeaderOrnament}>
-              <Text style={styles.onboardingBismillah}>بِسْمِ اللَّهِ</Text>
+              <Text style={styles.onboardingBismillah}>بِسْمِ اللهِ الرَّحْمٰنِ الرَّحِيمِ</Text>
               <Text style={styles.onboardingBismillahSub}>
-                {language === 'ar' ? 'باسم الله' : 'In the name of Allah'}
+                {language === 'ar' ? 'افتتح يومك بنية صادقة' : 'Begin with a sincere intention'}
               </Text>
             </View>
 
@@ -4356,17 +4356,20 @@ const styles = StyleSheet.create({
   },
   onboardingHeaderOrnament: {
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
   },
   onboardingBismillah: {
     color: COLORS.gold,
-    fontSize: 32,
-    fontWeight: '300',
-    letterSpacing: 2,
+    fontSize: 28,
+    fontWeight: '500',
+    letterSpacing: 0,
+    textAlign: 'center',
+    lineHeight: 40,
   },
   onboardingBismillahSub: {
     color: COLORS.roseGold,
-    fontSize: 12,
+    fontSize: 13,
+    textAlign: 'center',
   },
   onboardingTitle: {
     color: COLORS.cream,

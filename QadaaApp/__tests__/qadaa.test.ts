@@ -165,6 +165,21 @@ describe('qadaa helpers', () => {
     expect(nextState.autoCountUpdatedAt).toBe('2026-04-23T09:00:00.000Z');
   });
 
+  it('catches up by calendar day even if less than 24 hours passed', () => {
+    const state = {
+      ...defaultAppState(),
+      target: countsFromMissedDays(10),
+      autoCountUpdatedAt: '2026-04-20T23:30:00+03:00',
+      defaultDailyAddDays: 1,
+    };
+
+    const nextState = applyAutomaticQadaaProgress(state, new Date('2026-04-21T08:00:00+03:00'));
+
+    expect(totalCounts(nextState.completed)).toBe(PRAYERS_PER_QADAA_DAY);
+    expect(nextState.log).toHaveLength(PRAYERS_PER_QADAA_DAY);
+    expect(nextState.log.every((entry) => entry.createdAt.slice(0, 10) !== '2026-04-21')).toBe(true);
+  });
+
   it('does not backfill automatic qadaa while automatic counting is off', () => {
     const state = {
       ...defaultAppState(),

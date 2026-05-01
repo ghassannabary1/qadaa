@@ -388,7 +388,9 @@ export const applyAutomaticQadaaProgress = (state: AppState, now = new Date()): 
   }
 
   const lastUpdatedAt = new Date(state.autoCountUpdatedAt);
-  const elapsedMilliseconds = now.getTime() - lastUpdatedAt.getTime();
+  const lastUpdatedDay = startOfDay(lastUpdatedAt);
+  const currentDay = startOfDay(now);
+  const elapsedMilliseconds = currentDay.getTime() - lastUpdatedDay.getTime();
   const elapsedDays = Math.floor(elapsedMilliseconds / (24 * 60 * 60 * 1000));
 
   if (elapsedDays <= 0) {
