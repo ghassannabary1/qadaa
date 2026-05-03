@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState as NativeAppState,
   ActivityIndicator,
@@ -200,7 +200,6 @@ type CopyBlock = {
   prayerRowsTitle: string;
   showPrayerRows: string;
   hidePrayerRows: string;
-  resetToday: string;
   fullDayTitle: string;
   fullDayBody: string;
   fullDayToday: string;
@@ -426,7 +425,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     prayerRowsTitle: 'Prayer details',
     showPrayerRows: 'Show prayer details',
     hidePrayerRows: 'Hide prayer details',
-    resetToday: 'Reset today',
     fullDayTitle: 'Full qadaa day',
     fullDayBody: 'One tap logs Fajr, Dhuhr, Asr, Maghrib, and Isha together.',
     fullDayToday: 'Today',
@@ -664,7 +662,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     prayerRowsTitle: 'تفاصيل الصلوات',
     showPrayerRows: 'إظهار تفاصيل الصلوات',
     hidePrayerRows: 'إخفاء تفاصيل الصلوات',
-    resetToday: 'تصفير اليوم',
     fullDayTitle: 'يوم قضاء كامل',
     fullDayBody: 'ضغطة واحدة تسجل الفجر والظهر والعصر والمغرب والعشاء معاً.',
     fullDayToday: 'اليوم',
@@ -1472,18 +1469,6 @@ export default function App() {
     [state.language, state.notificationEnabled, state.notificationScheduleId]
   );
 
-  const resetToday = () => {
-    const copy = COPY[state.language];
-    Alert.alert(copy.resetToday, copy.resetToday, [
-      { text: copy.cancel, style: 'cancel' },
-      {
-        text: copy.resetToday,
-        style: 'destructive',
-        onPress: () => setState((current) => clearTodayPrayerProgress(current)),
-      },
-    ]);
-  };
-
   const dismissOnboarding = async (setup?: OnboardingSetup) => {
     try {
       await AsyncStorage.setItem(ONBOARD_KEY, '1');
@@ -1665,7 +1650,6 @@ export default function App() {
             decrementCompletedForDay={decrementCompletedForDay}
             completeQadaaDay={completeQadaaDay}
             undoQadaaDay={undoQadaaDay}
-            resetToday={resetToday}
             hadithIndex={hadithIndex}
             onLanguageChange={updateLanguage}
             handleExport={handleExport}
@@ -1967,7 +1951,12 @@ function OnboardingScreen({
               </View>
 
               <View style={styles.authButtons}>
-                <TouchableOpacity onPress={onGoogleSignIn} style={styles.oauthButtonPrimary}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  disabled={Boolean(authBusyProvider)}
+                  onPress={onGoogleSignIn}
+                  style={[styles.oauthButtonPrimary, authBusyProvider && styles.actionButtonDisabled]}
+                >
                   <View style={styles.oauthButtonRow}>
                     <Text style={styles.oauthButtonBrandPrimary}>G</Text>
                     <Text style={styles.oauthButtonPrimaryText}>{copy.prefillFromGoogle}</Text>
@@ -2302,7 +2291,6 @@ function MainApp({
   decrementCompletedForDay,
   completeQadaaDay,
   undoQadaaDay,
-  resetToday,
   hadithIndex,
   onLanguageChange,
   authConfigured,
@@ -2335,7 +2323,6 @@ function MainApp({
   decrementCompletedForDay: (prayer: PrayerKey, dayKey: string) => void;
   completeQadaaDay: () => void;
   undoQadaaDay: () => void;
-  resetToday: () => void;
   hadithIndex: number;
   onLanguageChange: (language: AppLanguage) => void;
   authConfigured: boolean;
@@ -2359,6 +2346,7 @@ function MainApp({
   handleImport: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<AppTab>('home');
+  const mainScrollRef = useRef<ScrollView | null>(null);
   const [showPrayerRows, setShowPrayerRows] = useState(false);
   const copy = COPY[state.language];
   const hadithItems = DAILY_HADITH[state.language];
@@ -2404,6 +2392,10 @@ function MainApp({
     }
   }, [activeTab, state.fastingEnabled]);
 
+  useEffect(() => {
+    mainScrollRef.current?.scrollTo({ x: 0, y: 0, animated: false });
+  }, [activeTab]);
+
   const tourActiveTab = useMemo(() => {
     if (!showInstallTour) return activeTab;
     if (activeTab === 'fasting' && !state.fastingEnabled) return 'home';
@@ -2422,6 +2414,7 @@ function MainApp({
     <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
       <View style={styles.appShell}>
         <ScrollView
+          ref={mainScrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -2462,9 +2455,6 @@ function MainApp({
                   <Text style={[styles.sectionTitle, isArabic(state.language) && styles.alignRight]}>
                     {copy.quickAddTitle}
                   </Text>
-                  <Pressable onPress={resetToday} style={styles.secondaryButton}>
-                    <Text style={styles.secondaryButtonText}>{copy.resetToday}</Text>
-                  </Pressable>
                 </View>
 
                 <View style={styles.dayActionCard}>
@@ -2485,12 +2475,22 @@ function MainApp({
                     </Text>
                   </View>
                   <View style={styles.dayActionButtons}>
-                    <Pressable onPress={completeQadaaDay} style={styles.fullDayButton}>
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={completeQadaaDay}
+                      style={styles.fullDayButton}
+                    >
                       <Text style={styles.fullDayButtonText}>{copy.addDay}</Text>
-                    </Pressable>
-                    <Pressable onPress={undoQadaaDay} style={styles.dayActionSecondaryButton}>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={undoQadaaDay}
+                      style={styles.dayActionSecondaryButton}
+                    >
                       <Text style={styles.minusButtonText}>{copy.undoDay}</Text>
-                    </Pressable>
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -3286,6 +3286,28 @@ function MoreTab({
     onFastingKafarahDaysChange(Math.max(0, Math.round(parsedDays)));
   };
 
+  const trimmedManualFastingTargetDays = manualFastingTargetDays.trim();
+  const parsedManualFastingTargetDays =
+    trimmedManualFastingTargetDays === '' ? null : Number(trimmedManualFastingTargetDays);
+  const nextManualFastingTargetDays =
+    parsedManualFastingTargetDays !== null && Number.isFinite(parsedManualFastingTargetDays)
+      ? Math.max(0, Math.round(parsedManualFastingTargetDays))
+      : null;
+  const isManualFastingTargetValid = nextManualFastingTargetDays !== null;
+  const isManualFastingTargetChanged =
+    nextManualFastingTargetDays !== null && nextManualFastingTargetDays !== fastingTargetDays;
+
+  const trimmedManualFastingKafarahDays = manualFastingKafarahDays.trim();
+  const parsedManualFastingKafarahDays =
+    trimmedManualFastingKafarahDays === '' ? null : Number(trimmedManualFastingKafarahDays);
+  const nextManualFastingKafarahDays =
+    parsedManualFastingKafarahDays !== null && Number.isFinite(parsedManualFastingKafarahDays)
+      ? Math.max(0, Math.round(parsedManualFastingKafarahDays))
+      : null;
+  const isManualFastingKafarahValid = nextManualFastingKafarahDays !== null;
+  const isManualFastingKafarahChanged =
+    nextManualFastingKafarahDays !== null && nextManualFastingKafarahDays !== fastingKafarahDays;
+
   return (
     <>
       <Modal animationType="slide" transparent visible={showTargetModal} onRequestClose={() => setShowTargetModal(false)}>
@@ -3319,7 +3341,11 @@ function MoreTab({
               </View>
             </ScrollView>
             <View style={styles.modalActions}>
-              <Pressable onPress={handleSaveEstimateTarget} style={styles.onboardingButton}>
+              <Pressable
+                onPress={handleSaveEstimateTarget}
+                disabled={!estimate}
+                style={[styles.onboardingButton, !estimate && styles.onboardingButtonDisabled]}
+              >
                 <Text style={styles.onboardingButtonText}>{copy.saveEstimateChanges}</Text>
               </Pressable>
               <Pressable onPress={() => setShowTargetModal(false)} style={styles.ghostButton}>
@@ -3384,8 +3410,9 @@ function MoreTab({
                 <View style={styles.authButtons}>
                   <TouchableOpacity
                     onPress={onGoogleSignIn}
+                    disabled={Boolean(authBusyProvider)}
                     activeOpacity={0.85}
-                    style={styles.oauthButtonPrimary}
+                    style={[styles.oauthButtonPrimary, authBusyProvider && styles.actionButtonDisabled]}
                   >
                     <View style={styles.oauthButtonRow}>
                       {authBusyProvider === 'google' ? (
@@ -3690,7 +3717,15 @@ function MoreTab({
                   placeholder="0"
                   placeholderTextColor={COLORS.mutedText}
                 />
-                <Pressable onPress={handleSaveFastingTarget} style={styles.shareButton}>
+                <Pressable
+                  onPress={handleSaveFastingTarget}
+                  disabled={!isManualFastingTargetValid || !isManualFastingTargetChanged}
+                  style={[
+                    styles.shareButton,
+                    (!isManualFastingTargetValid || !isManualFastingTargetChanged) &&
+                      styles.actionButtonDisabled,
+                  ]}
+                >
                   <Text style={styles.shareButtonText}>{copy.fastingSaveTarget}</Text>
                 </Pressable>
 
@@ -3713,7 +3748,15 @@ function MoreTab({
                   placeholder="0"
                   placeholderTextColor={COLORS.mutedText}
                 />
-                <Pressable onPress={handleSaveFastingKafarahDays} style={styles.shareButton}>
+                <Pressable
+                  onPress={handleSaveFastingKafarahDays}
+                  disabled={!isManualFastingKafarahValid || !isManualFastingKafarahChanged}
+                  style={[
+                    styles.shareButton,
+                    (!isManualFastingKafarahValid || !isManualFastingKafarahChanged) &&
+                      styles.actionButtonDisabled,
+                  ]}
+                >
                   <Text style={styles.shareButtonText}>{copy.kafarahSave}</Text>
                 </Pressable>
                 <Text style={[styles.settingsCompactHint, isArabic(language) && styles.alignRight]}>
