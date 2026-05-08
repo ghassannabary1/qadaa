@@ -1,12 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Session } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppState as NativeAppState,
-  ActivityIndicator,
   Alert,
   ImageBackground,
   Linking,
@@ -57,14 +55,6 @@ import {
   rollbackPrayerCompletionForDay,
   totalCounts,
 } from './src/utils/qadaa';
-import {
-  getUserProfile,
-  isAuthConfigured,
-  loadSession,
-  signInWithProvider,
-  signOutUser,
-  supabase,
-} from './src/utils/auth';
 import { createBackup, exportBackup, getBackupAge, restoreBackup } from './src/utils/backup';
 import {
   cancelDailyReminderNotification,
@@ -141,8 +131,6 @@ type OnboardingSetup = {
   profileEmail?: string;
 };
 
-type AccountProfile = ReturnType<typeof getUserProfile>;
-
 type CopyBlock = {
   dir: 'ltr' | 'rtl';
   appEyebrow: string;
@@ -161,7 +149,6 @@ type CopyBlock = {
   profileEmailLabel: string;
   profilePrefillHint: string;
   profileEmailInvalid: string;
-  prefillFromGoogle: string;
   onboardingEstimateTitle: string;
   onboardingEstimateBody: string;
   onboardingMethodTitle: string;
@@ -255,17 +242,6 @@ type CopyBlock = {
   recalculateTitle: string;
   saveEstimateChanges: string;
   cancel: string;
-  accountTitle: string;
-  accountHint: string;
-  connectGoogle: string;
-  connectedAs: string;
-  signOut: string;
-  authComingSoon: string;
-  authNeedsSetup: string;
-  sharingReadyHint: string;
-  authConfiguredLabel: string;
-  authReady: string;
-  authNotReady: string;
   languageTitle: string;
   languageHint: string;
   notificationTitle: string;
@@ -371,15 +347,14 @@ const COPY: Record<AppLanguage, CopyBlock> = {
       'Choose your language, set a simple Shafi\'i estimate, and start with a calm, easy flow.',
     profileSetupTitle: 'Your profile',
     profileSetupBody:
-      'You can add your name and email now or leave them for later. Google can fill them for you.',
+      'You can add your name and email now or leave them for later.',
     profileNameLabel: 'Name',
     profileNameHint: 'Use the name you want to see in the app.',
     profileAgeLabel: 'Current age',
     profileAgeHint: 'Optional, but useful for personal setup context.',
     profileEmailLabel: 'Email',
-    profilePrefillHint: 'Optional. Google can fill your name and email for you.',
+    profilePrefillHint: 'Optional. Add your name and email if you want them saved in the app.',
     profileEmailInvalid: 'Enter a valid email address.',
-    prefillFromGoogle: 'Optional: fill from Google',
     onboardingEstimateTitle: "First-time Shafi'i estimate",
     onboardingEstimateBody:
       'Estimate from the latest likely puberty age until the age when regular prayer became certain. If unsure whether a prayer was prayed, count it. Menstruation days can be excluded.',
@@ -486,17 +461,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     recalculateTitle: 'Recalculate qadaa estimate',
     saveEstimateChanges: 'Save estimate',
     cancel: 'Cancel',
-    accountTitle: 'Optional sign-in',
-    accountHint: 'No account is required to use QadaaApp. Sign in only if you want future backup and sharing features.',
-    connectGoogle: 'Optional: continue with Google',
-    connectedAs: 'Signed in as',
-    signOut: 'Sign out',
-    authComingSoon: 'This account will be the base for sharing progress with trusted people later.',
-    authNeedsSetup: 'Sign-in is not available on this build, but the app works fully without an account.',
-    sharingReadyHint: 'No account is required. Google sign-in is optional and only for future backup and sharing features.',
-    authConfiguredLabel: 'Sign-in status',
-    authReady: 'Available',
-    authNotReady: 'Not available',
     languageTitle: 'Language',
     languageHint: 'Choose one full app language for the whole interface.',
     notificationTitle: 'Daily reminder',
@@ -608,15 +572,14 @@ const COPY: Record<AppLanguage, CopyBlock> = {
       'اختر اللغة، واضبط تقديراً أولياً على المذهب الشافعي، ثم ابدأ بخطوات واضحة وبسيطة.',
     profileSetupTitle: 'بياناتك',
     profileSetupBody:
-      'يمكنك إضافة الاسم والبريد الآن أو تركهما لوقت لاحق. كما يمكن لجوجل تعبئتهما لك.',
+      'يمكنك إضافة الاسم والبريد الآن أو تركهما لوقت لاحق.',
     profileNameLabel: 'الاسم',
     profileNameHint: 'اكتب الاسم الذي تريد ظهوره داخل التطبيق.',
     profileAgeLabel: 'العمر الحالي',
     profileAgeHint: 'اختياري، لكنه يفيد في ضبط البداية بشكل شخصي.',
     profileEmailLabel: 'البريد الإلكتروني',
-    profilePrefillHint: 'اختياري. يمكن لجوجل تعبئة الاسم والبريد لك.',
+    profilePrefillHint: 'اختياري. أضف الاسم والبريد إذا أردت حفظهما داخل التطبيق.',
     profileEmailInvalid: 'أدخل بريدًا إلكترونيًا صحيحًا.',
-    prefillFromGoogle: 'اختياري: تعبئة من جوجل',
     onboardingEstimateTitle: 'تقدير أولي على المذهب الشافعي',
     onboardingEstimateBody:
       'يبدأ التقدير من آخر سنّ يُحتمل فيه البلوغ إلى السنّ الذي تيقنت فيه من الانتظام في الصلاة. وإذا شككت هل صليت صلاةً أم لا فاحسبها. ويمكن استثناء أيام الحيض.',
@@ -723,17 +686,6 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     recalculateTitle: 'إعادة تقدير القضاء',
     saveEstimateChanges: 'حفظ التقدير',
     cancel: 'إلغاء',
-    accountTitle: 'تسجيل دخول اختياري',
-    accountHint: 'لا تحتاج إلى حساب لاستخدام QadaaApp. سجّل الدخول فقط إذا أردت مزايا النسخ الاحتياطي والمشاركة مستقبلاً.',
-    connectGoogle: 'اختياري: المتابعة عبر جوجل',
-    connectedAs: 'تم تسجيل الدخول باسم',
-    signOut: 'تسجيل الخروج',
-    authComingSoon: 'سيكون هذا الحساب أساساً للنسخ الاحتياطي والمشاركة لاحقاً.',
-    authNeedsSetup: 'تسجيل الدخول غير متاح في هذه النسخة، لكن التطبيق يعمل كاملاً دون حساب.',
-    sharingReadyHint: 'لا تحتاج إلى حساب. تسجيل الدخول عبر جوجل اختياري ومخصص فقط لمزايا النسخ الاحتياطي والمشاركة مستقبلاً.',
-    authConfiguredLabel: 'حالة تسجيل الدخول',
-    authReady: 'متاح',
-    authNotReady: 'غير متاح',
     languageTitle: 'اللغة',
     languageHint: 'اختر لغة واحدة كاملة لواجهة التطبيق كلها.',
     notificationTitle: 'التذكير اليومي',
@@ -1128,11 +1080,6 @@ export default function App() {
   const [showInstallTour, setShowInstallTour] = useState(false);
   const [installTourSeen, setInstallTourSeen] = useState(false);
   const [hadithIndex, setHadithIndex] = useState(0);
-  const [authSession, setAuthSession] = useState<Session | null>(null);
-  const [authLoading, setAuthLoading] = useState(isAuthConfigured);
-  const [authBusyProvider, setAuthBusyProvider] = useState<'google' | 'facebook' | null>(null);
-  const [authError, setAuthError] = useState<string | null>(null);
-
   const syncReminderState = useCallback(
     async (nextState: AppState) => {
       if (!nextState.notificationEnabled) {
@@ -1254,43 +1201,6 @@ export default function App() {
       console.warn('Failed to save app state', error);
     });
   }, [loaded, state]);
-
-  useEffect(() => {
-    if (!isAuthConfigured || !supabase) {
-      setAuthLoading(false);
-      return;
-    }
-
-    let mounted = true;
-
-    loadSession()
-      .then((session) => {
-        if (mounted) {
-          setAuthSession(session);
-          setAuthLoading(false);
-        }
-      })
-      .catch((error) => {
-        console.warn('Failed to load auth session', error);
-        if (mounted) {
-          setAuthLoading(false);
-          setAuthError(error instanceof Error ? error.message : 'Failed to load account');
-        }
-      });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) {
-        setAuthSession(session);
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
 
   useEffect(() => {
     ensureNotificationInfrastructure(buildDailyReminderCopy(COPY[state.language])).catch((error) => {
@@ -1564,66 +1474,6 @@ export default function App() {
     }));
   }, []);
 
-  const handleProviderSignIn = useCallback(
-    async (provider: 'google' | 'facebook') => {
-      if (authBusyProvider) return;
-      const providerLabel =
-        state.language === 'ar'
-          ? provider === 'google'
-            ? 'جوجل'
-            : 'فيسبوك'
-          : provider === 'google'
-            ? 'Google'
-            : 'Facebook';
-      if (Constants.appOwnership === 'expo') {
-        Alert.alert(
-          state.language === 'ar'
-            ? `تسجيل الدخول عبر ${providerLabel}`
-            : `${providerLabel} sign-in`,
-          state.language === 'ar'
-            ? 'تسجيل الدخول الاجتماعي يحتاج إلى نسخة تطويرية من التطبيق. شغّل `npx expo run:android` أو `npx expo run:ios` ثم جرّب مرة أخرى.'
-            : 'Social sign-in needs a development build. Please run the app with `npx expo run:android` or `npx expo run:ios`, then try again.'
-        );
-        return;
-      }
-      try {
-        setAuthError(null);
-        setAuthBusyProvider(provider);
-        await signInWithProvider(provider);
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : state.language === 'ar'
-              ? 'تعذر تسجيل الدخول.'
-              : 'Sign-in failed.';
-        setAuthError(message);
-        Alert.alert(providerLabel, message);
-      } finally {
-        setAuthBusyProvider(null);
-      }
-    },
-    [authBusyProvider, state.language]
-  );
-
-  const handleSignOut = useCallback(async () => {
-    try {
-      setAuthError(null);
-      await signOutUser();
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : state.language === 'ar'
-            ? 'تعذر تسجيل الخروج.'
-            : 'Sign-out failed.';
-      setAuthError(message);
-      Alert.alert(state.language === 'ar' ? 'تسجيل الخروج' : 'Sign out', message);
-    }
-  }, [state.language]);
-
-  const accountProfile = useMemo<AccountProfile>(() => getUserProfile(authSession?.user ?? null), [authSession]);
-
   return (
     <ImageBackground source={APP_BACKGROUND} style={styles.backgroundImage} imageStyle={styles.backgroundImageAsset}>
       <View style={styles.backgroundTint}>
@@ -1632,10 +1482,6 @@ export default function App() {
           <OnboardingScreen
             language={state.language}
             onLanguageChange={updateLanguage}
-            accountProfile={accountProfile}
-            authBusyProvider={authBusyProvider}
-            authError={authError}
-            onGoogleSignIn={() => handleProviderSignIn('google')}
             onComplete={dismissOnboarding}
           />
         ) : (
@@ -1654,13 +1500,6 @@ export default function App() {
             onLanguageChange={updateLanguage}
             handleExport={handleExport}
             handleImport={handleImport}
-            authConfigured={isAuthConfigured}
-            accountProfile={accountProfile}
-            authLoading={authLoading}
-            authBusyProvider={authBusyProvider}
-            authError={authError}
-            onGoogleSignIn={() => handleProviderSignIn('google')}
-            onSignOut={handleSignOut}
             notificationEnabled={state.notificationEnabled}
             notificationHour={state.notificationHour}
             notificationMinute={state.notificationMinute}
@@ -1748,18 +1587,10 @@ function TabBar({
 function OnboardingScreen({
   language,
   onLanguageChange,
-  accountProfile,
-  authBusyProvider,
-  authError,
-  onGoogleSignIn,
   onComplete,
 }: {
   language: AppLanguage;
   onLanguageChange: (language: AppLanguage) => void;
-  accountProfile: AccountProfile;
-  authBusyProvider: 'google' | 'facebook' | null;
-  authError: string | null;
-  onGoogleSignIn: () => void;
   onComplete: (setup?: OnboardingSetup) => void;
 }) {
   const [estimateMode, setEstimateMode] = useState<'estimate' | 'manual'>('estimate');
@@ -1785,13 +1616,6 @@ function OnboardingScreen({
     [language, manualMissedDays]
   );
   const selectedSetup = estimateMode === 'manual' ? manualSetup : estimate;
-
-  useEffect(() => {
-    if (!accountProfile) return;
-
-    setProfileName((current) => current || accountProfile.name || '');
-    setProfileEmail((current) => current || accountProfile.email || '');
-  }, [accountProfile]);
 
   const trimmedProfileEmail = profileEmail.trim();
   const isEmailValid = trimmedProfileEmail === '' || EMAIL_REGEX.test(trimmedProfileEmail);
@@ -1950,41 +1774,6 @@ function OnboardingScreen({
                 ) : null}
               </View>
 
-              <View style={styles.authButtons}>
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  disabled={Boolean(authBusyProvider)}
-                  onPress={onGoogleSignIn}
-                  style={[styles.oauthButtonPrimary, authBusyProvider && styles.actionButtonDisabled]}
-                >
-                  <View style={styles.oauthButtonRow}>
-                    <Text style={styles.oauthButtonBrandPrimary}>G</Text>
-                    <Text style={styles.oauthButtonPrimaryText}>{copy.prefillFromGoogle}</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              {accountProfile ? (
-                <Text style={[styles.accountMeta, isArabic(language) && styles.alignRight]}>
-                  {accountProfile.name}
-                  {accountProfile.email ? ` • ${accountProfile.email}` : ''}
-                </Text>
-              ) : null}
-
-              {authBusyProvider ? (
-                <View style={styles.accountLoadingRow}>
-                  <ActivityIndicator color={COLORS.gold} />
-                  <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
-                    {copy.prefillFromGoogle}
-                  </Text>
-                </View>
-              ) : null}
-
-              {authError ? (
-                <Text style={[styles.accountError, isArabic(language) && styles.alignRight]}>
-                  {authError}
-                </Text>
-              ) : null}
             </View>
 
             <View style={styles.onboardingButtons}>
@@ -2293,13 +2082,6 @@ function MainApp({
   undoQadaaDay,
   hadithIndex,
   onLanguageChange,
-  authConfigured,
-  accountProfile,
-  authLoading,
-  authBusyProvider,
-  authError,
-  onGoogleSignIn,
-  onSignOut,
   notificationEnabled,
   notificationHour,
   notificationMinute,
@@ -2325,13 +2107,6 @@ function MainApp({
   undoQadaaDay: () => void;
   hadithIndex: number;
   onLanguageChange: (language: AppLanguage) => void;
-  authConfigured: boolean;
-  accountProfile: AccountProfile;
-  authLoading: boolean;
-  authBusyProvider: 'google' | 'facebook' | null;
-  authError: string | null;
-  onGoogleSignIn: () => void;
-  onSignOut: () => void;
   notificationEnabled: boolean;
   notificationHour: number;
   notificationMinute: number;
@@ -2603,13 +2378,6 @@ function MainApp({
               onFastingKafarahDaysChange={(fastingKafarahDays) =>
                 setState((current) => ({ ...current, fastingKafarahDays }))
               }
-              authConfigured={authConfigured}
-              accountProfile={accountProfile}
-              authLoading={authLoading}
-              authBusyProvider={authBusyProvider}
-              authError={authError}
-              onGoogleSignIn={onGoogleSignIn}
-              onSignOut={onSignOut}
               notes={state.notes}
               onNotesChange={(notes) => setState((current) => ({ ...current, notes }))}
               handleExport={handleExport}
@@ -3060,13 +2828,6 @@ function MoreTab({
   onFastingEnabledChange,
   onFastingTargetDaysChange,
   onFastingKafarahDaysChange,
-  authConfigured,
-  accountProfile,
-  authLoading,
-  authBusyProvider,
-  authError,
-  onGoogleSignIn,
-  onSignOut,
   notes,
   onNotesChange,
   handleExport,
@@ -3092,13 +2853,6 @@ function MoreTab({
   onFastingEnabledChange: (enabled: boolean) => void;
   onFastingTargetDaysChange: (days: number) => void;
   onFastingKafarahDaysChange: (days: number) => void;
-  authConfigured: boolean;
-  accountProfile: AccountProfile;
-  authLoading: boolean;
-  authBusyProvider: 'google' | 'facebook' | null;
-  authError: string | null;
-  onGoogleSignIn: () => void;
-  onSignOut: () => void;
   notes: string;
   onNotesChange: (notes: string) => void;
   handleExport: () => void;
@@ -3330,6 +3084,9 @@ function MoreTab({
                 </Text>
                 <ShafiiEstimateFields
                   language={language}
+                  mode="estimate"
+                  manualMissedDays=""
+                  onManualMissedDaysChange={() => undefined}
                   latestPubertyAge={latestPubertyAge}
                   regularPrayerAge={regularPrayerAge}
                   menstruationDays={menstruationDays}
@@ -3362,80 +3119,6 @@ function MoreTab({
         </Text>
 
         <View style={styles.settingsPanel}>
-          <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
-            {copy.accountTitle}
-          </Text>
-          <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>
-            {authConfigured ? copy.accountHint : copy.authNeedsSetup}
-          </Text>
-          <View style={styles.accountCard}>
-            <View style={styles.accountStatusHeader}>
-              <View
-                style={[
-                  styles.accountStatusDot,
-                  authConfigured ? styles.accountStatusDotReady : styles.accountStatusDotNotReady,
-                ]}
-              />
-              <Text style={[styles.accountStatusLine, isArabic(language) && styles.alignRight]}>
-                {copy.authConfiguredLabel}: {authConfigured ? copy.authReady : copy.authNotReady}
-              </Text>
-            </View>
-            {authLoading ? (
-              <View style={styles.accountLoadingRow}>
-                <ActivityIndicator color={COLORS.lightGold} />
-                <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
-                  {copy.accountHint}
-                </Text>
-              </View>
-            ) : accountProfile ? (
-              <>
-                <Text style={[styles.accountName, isArabic(language) && styles.alignRight]}>
-                  {accountProfile.name}
-                </Text>
-                <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
-                  {copy.connectedAs}: {accountProfile.email || accountProfile.provider}
-                </Text>
-                <Text style={[styles.accountMeta, isArabic(language) && styles.alignRight]}>
-                  {copy.authComingSoon}
-                </Text>
-                <Pressable onPress={onSignOut} style={styles.secondaryButton}>
-                  <Text style={styles.secondaryButtonText}>{copy.signOut}</Text>
-                </Pressable>
-              </>
-            ) : (
-              <>
-                <Text style={[styles.accountBody, isArabic(language) && styles.alignRight]}>
-                  {copy.sharingReadyHint}
-                </Text>
-                <View style={styles.authButtons}>
-                  <TouchableOpacity
-                    onPress={onGoogleSignIn}
-                    disabled={Boolean(authBusyProvider)}
-                    activeOpacity={0.85}
-                    style={[styles.oauthButtonPrimary, authBusyProvider && styles.actionButtonDisabled]}
-                  >
-                    <View style={styles.oauthButtonRow}>
-                      {authBusyProvider === 'google' ? (
-                        <ActivityIndicator color={COLORS.nightBlue} />
-                      ) : (
-                        <Text style={styles.oauthButtonBrandPrimary}>G</Text>
-                      )}
-                      <Text style={styles.oauthButtonPrimaryText}>{copy.connectGoogle}</Text>
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-
-            {authError ? (
-              <Text style={[styles.accountError, isArabic(language) && styles.alignRight]}>
-                {authError}
-              </Text>
-            ) : null}
-          </View>
-
-          <View style={styles.settingsDivider} />
-
           <Text style={[styles.settingsPanelTitle, isArabic(language) && styles.alignRight]}>
             {copy.languageTitle}
           </Text>

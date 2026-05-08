@@ -19,7 +19,7 @@
       "backgroundColor": "#0B3D2E"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.ghassannabary.qadaa",
       "requireFullScreen": false
     },
