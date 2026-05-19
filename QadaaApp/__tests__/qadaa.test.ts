@@ -435,7 +435,7 @@ describe('qadaa helpers', () => {
       estimateMissedDaysFromShafiiSetup({
         latestPubertyAge: 12,
         regularPrayerAge: 13,
-        menstruationDaysPerYear: 60,
+        menstruationDaysPerMonth: 5,
       })
     ).toBe(294);
   });

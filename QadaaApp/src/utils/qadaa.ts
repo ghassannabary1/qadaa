@@ -122,18 +122,18 @@ export const totalCounts = (counts: PrayerCounts) =>
 export const estimateMissedDaysFromShafiiSetup = ({
   latestPubertyAge,
   regularPrayerAge,
-  menstruationDaysPerYear = 0,
+  menstruationDaysPerMonth = 0,
 }: {
   latestPubertyAge: number;
   regularPrayerAge: number;
-  menstruationDaysPerYear?: number;
+  menstruationDaysPerMonth?: number;
 }) => {
   const startAge = Math.max(0, latestPubertyAge);
   const endAge = Math.max(startAge, regularPrayerAge);
   const yearsMissed = endAge - startAge;
   const lunarDaysPerYear = 354.367;
   const estimatedMissedDays = yearsMissed * lunarDaysPerYear;
-  const excludedDays = Math.max(0, menstruationDaysPerYear) * yearsMissed;
+  const excludedDays = Math.max(0, menstruationDaysPerMonth) * yearsMissed * 12;
 
   return Math.max(0, Math.round(estimatedMissedDays - excludedDays));
 };

@@ -378,8 +378,8 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     latestPubertyHint: 'Use the latest age puberty had definitely started.',
     regularPrayerAge: 'Age when regular prayer became certain',
     regularPrayerHint: 'Use the age when you know you were praying consistently.',
-    menstruationDays: 'Menstruation days per lunar year',
-    menstruationHint: 'Optional. Keep 0 if not applicable.',
+    menstruationDays: 'Menstruation days per month',
+    menstruationHint: 'Optional. Use your usual monthly number, or keep 0 if not applicable.',
     estimateBacklog: 'Estimated backlog',
     estimateBacklogBody: 'This fills the five daily prayers with the same number of missed days.',
     onboardingAutoCountTitle: 'Finish projection',
@@ -397,9 +397,9 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     progressTitle: 'Progress',
     progressHint: 'See what is left and when you finish based on your automatic daily counting setting.',
     quickAddTitle: 'Quick add',
-    prayerRowsTitle: 'Prayer details',
-    showPrayerRows: 'Show prayer details',
-    hidePrayerRows: 'Hide prayer details',
+    prayerRowsTitle: 'Individual prayers',
+    showPrayerRows: 'Show individual prayers',
+    hidePrayerRows: 'Hide individual prayers',
     fullDayTitle: 'Full qadaa day',
     fullDayBody: 'One tap logs Fajr, Dhuhr, Asr, Maghrib, and Isha together.',
     fullDayToday: 'Today',
@@ -556,7 +556,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     kafarahWarning:
       'This is a planning aid, not a fatwa. Please confirm difficult personal cases with a qualified Shafi\'i scholar.',
     kafarahPoorPeopleLabel: 'If feeding instead: poor people to feed',
-    kafarahFastingLabel: 'If able: two consecutive lunar months for each eligible day',
+    kafarahFastingLabel: 'If able: two consecutive months for each eligible day',
     kafarahTrackHint: 'Keep kaffarah separate from qadaa fasting days.',
     kafarahAdvancedLabel: 'Advanced',
   },
@@ -603,8 +603,8 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     latestPubertyHint: 'استخدم آخر سن تتيقن أن البلوغ كان قد حصل فيه.',
     regularPrayerAge: 'السن الذي تيقنت فيه من الانتظام في الصلاة',
     regularPrayerHint: 'استخدم السن الذي عرفت فيه أنك أصبحت تصلي باستمرار.',
-    menstruationDays: 'أيام الحيض في السنة القمرية',
-    menstruationHint: 'اختياري. اتركه 0 إن لم يكن مناسباً.',
+    menstruationDays: 'أيام الحيض في الشهر',
+    menstruationHint: 'اختياري. استخدمي العدد المعتاد شهرياً، أو اتركيه 0 إن لم يكن مناسباً.',
     estimateBacklog: 'التقدير الأولي',
     estimateBacklogBody: 'سيملأ هذا التقدير الصلوات الخمس اليومية بنفس عدد الأيام الفائتة.',
     onboardingAutoCountTitle: 'تقدير الانتهاء',
@@ -622,9 +622,9 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     progressTitle: 'التقدّم',
     progressHint: 'شاهد المتبقي وتاريخ الانتهاء بحسب إعداد العدّ اليومي التلقائي.',
     quickAddTitle: 'إضافة سريعة',
-    prayerRowsTitle: 'تفاصيل الصلوات',
-    showPrayerRows: 'إظهار تفاصيل الصلوات',
-    hidePrayerRows: 'إخفاء تفاصيل الصلوات',
+    prayerRowsTitle: 'الصلوات المفردة',
+    showPrayerRows: 'إظهار الصلوات المفردة',
+    hidePrayerRows: 'إخفاء الصلوات المفردة',
     fullDayTitle: 'يوم قضاء كامل',
     fullDayBody: 'ضغطة واحدة تسجل الفجر والظهر والعصر والمغرب والعشاء معاً.',
     fullDayToday: 'اليوم',
@@ -781,7 +781,7 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     kafarahWarning:
       'هذه أداة تنظيمية وليست فتوى. في المسائل الشخصية المعقدة يُرجى الرجوع إلى عالم شافعي مؤهل.',
     kafarahPoorPeopleLabel: 'عند الإطعام: عدد المساكين',
-    kafarahFastingLabel: 'عند القدرة: شهران قمريان متتابعان عن كل يوم موجب للكفارة',
+    kafarahFastingLabel: 'عند القدرة: شهران متتابعان عن كل يوم موجب للكفارة',
     kafarahTrackHint: 'أبقِ الكفارة منفصلة عن أيام قضاء الصيام.',
     kafarahAdvancedLabel: 'متقدم',
   },
@@ -1042,7 +1042,7 @@ function buildShafiiEstimate({
   const missedDays = estimateMissedDaysFromShafiiSetup({
     latestPubertyAge: parsedPubertyAge,
     regularPrayerAge: parsedRegularPrayerAge,
-    menstruationDaysPerYear: Number.isNaN(parsedMenstruationDays) ? 0 : parsedMenstruationDays,
+    menstruationDaysPerMonth: Number.isNaN(parsedMenstruationDays) ? 0 : parsedMenstruationDays,
   });
 
   return {
@@ -1073,6 +1073,130 @@ function buildManualMissedDaysSetup(language: AppLanguage, manualMissedDays: str
   };
 }
 
+type ScreenshotScreen = 'onboarding' | AppTab;
+
+type ScreenshotConfig = {
+  screen: ScreenshotScreen;
+  language: AppLanguage;
+  section: 'default' | 'progress' | 'quickadd' | 'history' | 'fasting' | 'answers' | 'settings';
+};
+
+const SCREENSHOT_SCREENS = new Set<ScreenshotScreen>([
+  'onboarding',
+  'home',
+  'history',
+  'fasting',
+  'answers',
+  'more',
+]);
+
+function toDayKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function screenshotDate(daysAgo: number, hour = 12) {
+  const date = new Date();
+  date.setHours(hour, 0, 0, 0);
+  date.setDate(date.getDate() - daysAgo);
+  return date;
+}
+
+function buildScreenshotState(language: AppLanguage): AppState {
+  let nextState: AppState = {
+    ...defaultAppState(),
+    language,
+    profileName: language === 'ar' ? 'أمينة' : 'Amina',
+    profileAge: '27',
+    profileEmail: 'amina@example.com',
+    target: countsFromMissedDays(420),
+    completed: {
+      fajr: 168,
+      dhuhr: 161,
+      asr: 159,
+      maghrib: 164,
+      isha: 157,
+    },
+    todayCompleted: {
+      fajr: 1,
+      dhuhr: 1,
+      asr: 0,
+      maghrib: 1,
+      isha: 0,
+    },
+    defaultDailyAddDays: 2,
+    autoCountUpdatedAt: screenshotDate(12, 9).toISOString(),
+    fastingEnabled: true,
+    fastingTargetDays: 24,
+    fastingCompletedDays: 9,
+    fastingKafarahDays: 2,
+    notes:
+      language === 'ar'
+        ? 'خطة هادئة وثابتة: يومان قضاء يوميا مع مراجعة آخر كل أسبوع.'
+        : 'Steady plan: count two qadaa days each day and review progress weekly.',
+  };
+
+  const prayerHistory: Array<{ daysAgo: number; prayers: PrayerKey[] }> = [
+    { daysAgo: 0, prayers: ['fajr', 'dhuhr', 'maghrib'] },
+    { daysAgo: 1, prayers: ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'] },
+    { daysAgo: 2, prayers: ['fajr', 'asr', 'isha'] },
+    { daysAgo: 3, prayers: ['dhuhr', 'maghrib'] },
+    { daysAgo: 5, prayers: ['fajr', 'dhuhr', 'asr', 'maghrib'] },
+    { daysAgo: 7, prayers: ['fajr', 'isha'] },
+    { daysAgo: 10, prayers: ['dhuhr', 'asr', 'maghrib'] },
+  ];
+
+  for (const entry of prayerHistory) {
+    const dayKey = toDayKey(screenshotDate(entry.daysAgo));
+    for (const prayer of entry.prayers) {
+      nextState = applyPrayerCompletionForDay(nextState, prayer, dayKey, screenshotDate(0));
+    }
+  }
+
+  nextState.fastingLog = [0, 2, 6, 9, 13, 18, 24, 31, 39].map((daysAgo) => ({
+    id: `fast-${daysAgo}`,
+    createdAt: screenshotDate(daysAgo, 8).toISOString(),
+  }));
+
+  return nextState;
+}
+
+function parseScreenshotConfig(rawUrl?: string | null): ScreenshotConfig | null {
+  const fallbackUrl =
+    Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : null;
+  const candidateUrl = rawUrl ?? fallbackUrl;
+  if (!candidateUrl) return null;
+
+  try {
+    const parsedUrl = new URL(candidateUrl);
+    const params = parsedUrl.searchParams;
+    const screenshotParam = params.get('screenshot');
+    const screenParam = params.get('screen') ?? screenshotParam;
+
+    if (!screenshotParam && !screenParam) {
+      return null;
+    }
+
+    const screen = screenParam && SCREENSHOT_SCREENS.has(screenParam as ScreenshotScreen)
+      ? (screenParam as ScreenshotScreen)
+      : 'home';
+    const language = params.get('lang') === 'ar' ? 'ar' : 'en';
+    const requestedSection = params.get('section');
+    const section =
+      requestedSection === 'progress' ||
+      requestedSection === 'quickadd' ||
+      requestedSection === 'history' ||
+      requestedSection === 'fasting' ||
+      requestedSection === 'answers' ||
+      requestedSection === 'settings'
+        ? requestedSection
+        : 'default';
+
+    return { screen, language, section };
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [state, setState] = useState<AppState>(defaultAppState());
   const [loaded, setLoaded] = useState(false);
@@ -1080,6 +1204,16 @@ export default function App() {
   const [showInstallTour, setShowInstallTour] = useState(false);
   const [installTourSeen, setInstallTourSeen] = useState(false);
   const [hadithIndex, setHadithIndex] = useState(0);
+  const [screenshotConfig, setScreenshotConfig] = useState<ScreenshotConfig | null>(null);
+  const applyScreenshotConfig = useCallback((config: ScreenshotConfig) => {
+    setScreenshotConfig(config);
+    setState(buildScreenshotState(config.language));
+    setShowOnboarding(config.screen === 'onboarding');
+    setShowInstallTour(false);
+    setInstallTourSeen(true);
+    setHadithIndex(0);
+    setLoaded(true);
+  }, []);
   const syncReminderState = useCallback(
     async (nextState: AppState) => {
       if (!nextState.notificationEnabled) {
@@ -1130,6 +1264,12 @@ export default function App() {
   useEffect(() => {
     const loadState = async () => {
       try {
+        const initialScreenshotConfig = parseScreenshotConfig(await Linking.getInitialURL());
+        if (initialScreenshotConfig) {
+          applyScreenshotConfig(initialScreenshotConfig);
+          return;
+        }
+
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         const onboarded = await AsyncStorage.getItem(ONBOARD_KEY);
         const tourSeen = await AsyncStorage.getItem(TOUR_KEY);
@@ -1166,10 +1306,23 @@ export default function App() {
     };
 
     loadState();
-  }, [syncReminderState]);
+  }, [applyScreenshotConfig, syncReminderState]);
 
   useEffect(() => {
-    if (!loaded) return;
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      const nextScreenshotConfig = parseScreenshotConfig(url);
+      if (nextScreenshotConfig) {
+        applyScreenshotConfig(nextScreenshotConfig);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [applyScreenshotConfig]);
+
+  useEffect(() => {
+    if (!loaded || screenshotConfig) return;
 
     const backupTimer = setInterval(async () => {
       await createBackup(state);
@@ -1178,10 +1331,10 @@ export default function App() {
     createBackup(state);
 
     return () => clearInterval(backupTimer);
-  }, [loaded, state]);
+  }, [loaded, screenshotConfig, state]);
 
   useEffect(() => {
-    if (!loaded) return undefined;
+    if (!loaded || screenshotConfig) return undefined;
 
     const subscription = NativeAppState.addEventListener('change', (status) => {
       if (status === 'active') {
@@ -1192,23 +1345,27 @@ export default function App() {
     return () => {
       subscription.remove();
     };
-  }, [loaded]);
+  }, [loaded, screenshotConfig]);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || screenshotConfig) return;
 
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch((error) => {
       console.warn('Failed to save app state', error);
     });
-  }, [loaded, state]);
+  }, [loaded, screenshotConfig, state]);
 
   useEffect(() => {
+    if (screenshotConfig) return;
+
     ensureNotificationInfrastructure(buildDailyReminderCopy(COPY[state.language])).catch((error) => {
       console.warn('Failed to configure notifications', error);
     });
-  }, [state.language]);
+  }, [screenshotConfig, state.language]);
 
   useEffect(() => {
+    if (screenshotConfig) return undefined;
+
     const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
       const data = response.notification.request.content.data as { kind?: string } | undefined;
       if (data?.kind !== DAILY_REMINDER_KIND) return;
@@ -1238,7 +1395,7 @@ export default function App() {
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [screenshotConfig]);
 
   const totals = useMemo<Totals>(() => {
     const target = totalCounts(state.target);
@@ -1380,10 +1537,12 @@ export default function App() {
   );
 
   const dismissOnboarding = async (setup?: OnboardingSetup) => {
-    try {
-      await AsyncStorage.setItem(ONBOARD_KEY, '1');
-    } catch (error) {
-      console.warn('Failed to save onboarding state', error);
+    if (!screenshotConfig) {
+      try {
+        await AsyncStorage.setItem(ONBOARD_KEY, '1');
+      } catch (error) {
+        console.warn('Failed to save onboarding state', error);
+      }
     }
 
     if (setup) {
@@ -1401,7 +1560,7 @@ export default function App() {
     }
 
     setShowOnboarding(false);
-    if (!installTourSeen) {
+    if (!installTourSeen && !screenshotConfig) {
       setShowInstallTour(true);
     }
   };
@@ -1510,6 +1669,7 @@ export default function App() {
             onDefaultDailyAddDaysChange={(defaultDailyAddDays) =>
               setState((current) => ({ ...current, defaultDailyAddDays }))
             }
+            screenshotConfig={screenshotConfig}
             showInstallTour={showInstallTour}
             onFinishInstallTour={finishInstallTour}
           />
@@ -2090,6 +2250,7 @@ function MainApp({
   onNotificationTimeChange,
   onUpdateTarget,
   onDefaultDailyAddDaysChange,
+  screenshotConfig,
   showInstallTour,
   onFinishInstallTour,
   handleExport,
@@ -2115,6 +2276,7 @@ function MainApp({
   onNotificationTimeChange: (hour: number, minute: number) => Promise<boolean>;
   onUpdateTarget: (setup: OnboardingSetup) => void;
   onDefaultDailyAddDaysChange: (defaultDailyAddDays: number) => void;
+  screenshotConfig: ScreenshotConfig | null;
   showInstallTour: boolean;
   onFinishInstallTour: () => Promise<void> | void;
   handleExport: () => void;
@@ -2122,8 +2284,9 @@ function MainApp({
 }) {
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const mainScrollRef = useRef<ScrollView | null>(null);
-  const [showPrayerRows, setShowPrayerRows] = useState(false);
+  const [showPrayerRows, setShowPrayerRows] = useState(true);
   const copy = COPY[state.language];
+  const isRtl = isArabic(state.language);
   const hadithItems = DAILY_HADITH[state.language];
   const hadith = hadithItems[hadithIndex % hadithItems.length];
   const fastingRemainingDays = remainingFastingDays(
@@ -2168,8 +2331,45 @@ function MainApp({
   }, [activeTab, state.fastingEnabled]);
 
   useEffect(() => {
+    if (!screenshotConfig) return;
+
+    if (screenshotConfig.screen === 'onboarding') {
+      setActiveTab('home');
+      setShowPrayerRows(false);
+      return;
+    }
+
+    const nextTab =
+      screenshotConfig.screen === 'fasting' && !state.fastingEnabled
+        ? 'home'
+        : screenshotConfig.screen;
+    setActiveTab(nextTab);
+    setShowPrayerRows(
+      screenshotConfig.screen === 'home' &&
+        (screenshotConfig.section === 'quickadd' || screenshotConfig.section === 'default')
+    );
+  }, [screenshotConfig, state.fastingEnabled]);
+
+  useEffect(() => {
     mainScrollRef.current?.scrollTo({ x: 0, y: 0, animated: false });
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!screenshotConfig || screenshotConfig.screen === 'onboarding') return;
+
+    const scrollY = (() => {
+      if (screenshotConfig.screen === 'home' && screenshotConfig.section === 'progress') return 340;
+      if (screenshotConfig.screen === 'home' && screenshotConfig.section === 'quickadd') return 980;
+      if (screenshotConfig.screen === 'more' && screenshotConfig.section === 'settings') return 360;
+      return 0;
+    })();
+
+    const timer = setTimeout(() => {
+      mainScrollRef.current?.scrollTo({ x: 0, y: scrollY, animated: false });
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [activeTab, screenshotConfig]);
 
   const tourActiveTab = useMemo(() => {
     if (!showInstallTour) return activeTab;
@@ -2195,19 +2395,17 @@ function MainApp({
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.headerCard}>
-            <View style={styles.headerTopRow}>
-              <Text style={styles.eyebrow}>{copy.dailyHadithTitle}</Text>
-            </View>
-            <DividerOrnament color={COLORS.gold} />
             <Pressable onPress={() => Linking.openURL(hadith.url)} style={styles.hadithCard}>
-              <View style={[styles.hadithBadge, isArabic(state.language) && styles.hadithBadgeArabic]}>
+              <View style={[styles.hadithBadge, isRtl && styles.hadithBadgeArabic]}>
                 <Text style={styles.hadithLabel}>{hadith.collection}</Text>
               </View>
+              <Text style={[styles.hadithIntro, isRtl && styles.alignRight]}>{copy.dailyHadithIntro}</Text>
               <Text
+                numberOfLines={3}
                 style={[
                   styles.hadithText,
-                  isArabic(state.language) && styles.hadithTextArabic,
-                  isArabic(state.language) && styles.alignRight,
+                  isRtl && styles.hadithTextArabic,
+                  isRtl && styles.alignRight,
                 ]}
               >
                 {hadith.text}
@@ -2226,26 +2424,24 @@ function MainApp({
               />
 
               <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.sectionTitle, isArabic(state.language) && styles.alignRight]}>
+                <View style={[styles.sectionHeader, isRtl && styles.rowReverse]}>
+                  <Text style={[styles.sectionTitle, isRtl && styles.alignRight]}>
                     {copy.quickAddTitle}
                   </Text>
                 </View>
 
                 <View style={styles.dayActionCard}>
                   <View style={styles.dayActionInfo}>
-                    <View style={styles.dayActionBadge}>
+                    <View style={[styles.dayActionBadge, isRtl && styles.dayActionBadgeRtl]}>
                       <Text style={styles.dayActionBadgeText}>{copy.fullDayToday}</Text>
                     </View>
-                    <Text style={[styles.dayActionTitle, isArabic(state.language) && styles.alignRight]}>
+                    <Text style={[styles.dayActionTitle, isRtl && styles.alignRight]}>
                       {copy.fullDayTitle}
                     </Text>
-                    <Text
-                      style={[styles.dayActionSubtitle, isArabic(state.language) && styles.alignRight]}
-                    >
+                    <Text style={[styles.dayActionSubtitle, isRtl && styles.alignRight]}>
                       {copy.fullDayPrimary}
                     </Text>
-                    <Text style={[styles.dayActionMeta, isArabic(state.language) && styles.alignRight]}>
+                    <Text style={[styles.dayActionMeta, isRtl && styles.alignRight]}>
                       {copy.fullDaySecondary}
                     </Text>
                   </View>
@@ -2269,30 +2465,31 @@ function MainApp({
                   </View>
                 </View>
 
-                <Pressable
-                  onPress={() => setShowPrayerRows((current) => !current)}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonText}>
-                    {showPrayerRows ? copy.hidePrayerRows : copy.showPrayerRows}
+                <View style={[styles.prayerRowsHeader, isRtl && styles.rowReverse]}>
+                  <Text style={[styles.prayerRowsHeaderTitle, isRtl && styles.alignRight]}>
+                    {copy.prayerRowsTitle}
                   </Text>
-                </Pressable>
+                  <Pressable
+                    onPress={() => setShowPrayerRows((current) => !current)}
+                    style={styles.secondaryButton}
+                  >
+                    <Text style={styles.secondaryButtonText}>
+                      {showPrayerRows ? copy.hidePrayerRows : copy.showPrayerRows}
+                    </Text>
+                  </Pressable>
+                </View>
 
                 {showPrayerRows
                   ? PRAYER_KEYS.map((prayer) => {
                       const prayerInfo = PRAYER_LABELS[prayer];
                       const remaining = Math.max(state.target[prayer] - state.completed[prayer], 0);
                       return (
-                        <View key={prayer} style={styles.prayerCard}>
+                        <View key={prayer} style={[styles.prayerCard, isRtl && styles.rowReverse]}>
                           <View style={styles.prayerInfo}>
-                            <Text
-                              style={[styles.prayerLabel, isArabic(state.language) && styles.alignRight]}
-                            >
+                            <Text style={[styles.prayerLabel, isRtl && styles.alignRight]}>
                               {state.language === 'ar' ? prayerInfo.arabic : prayerInfo.label}
                             </Text>
-                            <Text
-                              style={[styles.prayerMeta, isArabic(state.language) && styles.alignRight]}
-                            >
+                            <Text style={[styles.prayerMeta, isRtl && styles.alignRight]}>
                               {copy.doneLabel} {state.completed[prayer]} / {state.target[prayer]} ·{' '}
                               {remaining} {copy.remainingLabel}
                             </Text>
@@ -2417,6 +2614,7 @@ function HistoryTab({
   onIncrementPrayerForDay: (prayer: PrayerKey, dayKey: string) => void;
   onDecrementPrayerForDay: (prayer: PrayerKey, dayKey: string) => void;
 }) {
+  const isRtl = isArabic(language);
   const [monthOffset, setMonthOffset] = useState(0);
   const [showDayDetails, setShowDayDetails] = useState(false);
   const monthDate = useMemo(() => {
@@ -2437,24 +2635,24 @@ function HistoryTab({
 
   return (
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>{copy.historyTitle}</Text>
-      <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>{copy.historyHint}</Text>
-      <Text style={[styles.calendarLegendText, isArabic(language) && styles.alignRight]}>
+      <Text style={[styles.sectionTitle, isRtl && styles.alignRight]}>{copy.historyTitle}</Text>
+      <Text style={[styles.sectionHint, isRtl && styles.alignRight]}>{copy.historyHint}</Text>
+      <Text style={[styles.calendarLegendText, isRtl && styles.alignRight]}>
         {copy.calendarLegend}
       </Text>
 
-      <View style={styles.calendarMonthHeader}>
+      <View style={[styles.calendarMonthHeader, isRtl && styles.rowReverse]}>
         <Pressable onPress={() => setMonthOffset((current) => current - 1)} style={styles.monthNavButton}>
           <Text style={styles.monthNavButtonText}>{copy.previousMonth}</Text>
         </Pressable>
-        <Text style={[styles.calendarMonthLabel, isArabic(language) && styles.alignRight]}>{monthLabel}</Text>
+        <Text style={[styles.calendarMonthLabel, isRtl && styles.alignRight]}>{monthLabel}</Text>
         <Pressable onPress={() => setMonthOffset((current) => Math.min(current + 1, 0))} style={styles.monthNavButton}>
           <Text style={styles.monthNavButtonText}>{copy.nextMonth}</Text>
         </Pressable>
       </View>
 
       {chunkIntoWeeks(monthDays).map((week, weekIndex) => (
-        <View key={`week-${weekIndex}`} style={styles.calendarRow}>
+        <View key={`week-${weekIndex}`} style={[styles.calendarRow, isRtl && styles.rowReverse]}>
           {week.map((day) => (
             <CalendarCell
               key={day.dayKey}
@@ -2468,14 +2666,14 @@ function HistoryTab({
 
       {selectedDay ? (
         <View style={styles.selectedDayCard}>
-          <Text style={[styles.selectedDayTitle, isArabic(language) && styles.alignRight]}>
+          <Text style={[styles.selectedDayTitle, isRtl && styles.alignRight]}>
             {copy.selectedDay}: {formatCalendarDay(selectedDay.dayKey, language)}
           </Text>
-          <Text style={[styles.selectedDayCount, isArabic(language) && styles.alignRight]}>
+          <Text style={[styles.selectedDayCount, isRtl && styles.alignRight]}>
             {selectedDay.totalCount} {copy.prayersLabel}
           </Text>
           {selectedDay.totalCount === 0 ? (
-            <Text style={[styles.selectedDayBody, isArabic(language) && styles.alignRight]}>
+            <Text style={[styles.selectedDayBody, isRtl && styles.alignRight]}>
               {copy.noRecordedPrayers}
             </Text>
           ) : (
@@ -2496,29 +2694,27 @@ function HistoryTab({
         >
           <View style={styles.modalBackdrop}>
             <View style={styles.modalSheet}>
-              <Text style={[styles.modalTitle, isArabic(language) && styles.alignRight]}>
+              <Text style={[styles.modalTitle, isRtl && styles.alignRight]}>
                 {copy.dayDetailsTitle}
               </Text>
-              <Text style={[styles.modalDate, isArabic(language) && styles.alignRight]}>
+              <Text style={[styles.modalDate, isRtl && styles.alignRight]}>
                 {formatCalendarDay(selectedDay.dayKey, language)}
               </Text>
-              <Text style={[styles.selectedDayCount, isArabic(language) && styles.alignRight]}>
+              <Text style={[styles.selectedDayCount, isRtl && styles.alignRight]}>
                 {selectedDay.totalCount} {copy.prayersLabel}
               </Text>
               {selectedDay.totalCount === 0 ? (
-                <Text style={[styles.selectedDayBody, isArabic(language) && styles.alignRight]}>
+                <Text style={[styles.selectedDayBody, isRtl && styles.alignRight]}>
                   {copy.noRecordedPrayers}
                 </Text>
               ) : null}
               <View style={styles.prayerBreakdownList}>
                 {PRAYER_KEYS.map((prayer) => (
-                  <View key={prayer} style={styles.prayerBreakdownRow}>
-                    <Text
-                      style={[styles.prayerBreakdownName, isArabic(language) && styles.alignRight]}
-                    >
+                  <View key={prayer} style={[styles.prayerBreakdownRow, isRtl && styles.rowReverse]}>
+                    <Text style={[styles.prayerBreakdownName, isRtl && styles.alignRight]}>
                       {language === 'ar' ? PRAYER_LABELS[prayer].arabic : PRAYER_LABELS[prayer].label}
                     </Text>
-                    <View style={styles.prayerBreakdownActions}>
+                    <View style={[styles.prayerBreakdownActions, isRtl && styles.rowReverse]}>
                       <Pressable
                         onPress={() => onIncrementPrayerForDay(prayer, selectedDay.dayKey)}
                         style={[styles.historyAdjustButton, styles.historyAdjustButtonAdd]}
@@ -2735,12 +2931,24 @@ function CalendarCell({
         selected && styles.calendarCellSelected,
       ]}
     >
-      <Text style={[styles.calendarDayNumber, day.isOutsideMonth && styles.calendarDayNumberOutside]}>
+      <Text
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+        numberOfLines={1}
+        style={[styles.calendarDayNumber, day.isOutsideMonth && styles.calendarDayNumberOutside]}
+      >
         {dayNumber}
       </Text>
       {day.totalCount > 0 ? (
         <View style={styles.calendarCountDot}>
-          <Text style={styles.calendarCountDotText}>{day.totalCount}</Text>
+          <Text
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+            numberOfLines={1}
+            style={styles.calendarCountDotText}
+          >
+            {day.totalCount}
+          </Text>
         </View>
       ) : null}
     </Pressable>
@@ -3547,57 +3755,65 @@ function ProgressOverview({
   defaultDailyAddDays: number;
   language: AppLanguage;
 }) {
+  const isRtl = isArabic(language);
   return (
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, isArabic(language) && styles.alignRight]}>{copy.progressTitle}</Text>
-      <Text style={[styles.sectionHint, isArabic(language) && styles.alignRight]}>{copy.progressHint}</Text>
+      <Text style={[styles.sectionTitle, isRtl && styles.alignRight]}>{copy.progressTitle}</Text>
+      <Text style={[styles.sectionHint, isRtl && styles.alignRight]}>{copy.progressHint}</Text>
       <View style={styles.progressCard}>
-        <Text style={[styles.focusLabel, isArabic(language) && styles.alignRight]}>
+        <Text style={[styles.focusLabel, isRtl && styles.alignRight]}>
           {copy.primaryFocus}
         </Text>
-        <View style={styles.progressHeader}>
-          <Text style={[styles.progressTitle, isArabic(language) && styles.alignRight]}>
+        <View style={[styles.progressHeader, isRtl && styles.rowReverse]}>
+          <Text style={[styles.progressTitle, isRtl && styles.alignRight]}>
             {totals.remaining} {copy.remaining}
           </Text>
           <Text style={styles.progressPercent}>{Math.round(progress.percent * 100)}%</Text>
         </View>
-        <View style={styles.progressSplitLabels}>
-          <Text style={[styles.progressSplitText, isArabic(language) && styles.alignRight]}>
+        <View style={[styles.progressSplitLabels, isRtl && styles.rowReverse]}>
+          <Text style={[styles.progressSplitText, isRtl && styles.alignRight]}>
             {copy.overallProgress}
           </Text>
-          <Text style={styles.progressSplitText}>
+          <Text style={[styles.progressSplitText, isRtl && styles.alignRight]}>
             {formatDecimal(progress.completedDays)} / {formatDecimal(progress.completedDays + progress.remainingDays)} {copy.dayUnit}
           </Text>
         </View>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progress.percent * 100}%` }]} />
         </View>
-        <View style={styles.progressMiniStatsRow}>
+        <View style={[styles.progressMiniStatsRow, isRtl && styles.rowReverse]}>
           <View style={styles.progressMiniStat}>
-            <Text style={styles.progressMiniLabel}>{copy.daysCompleted}</Text>
-            <Text style={[styles.progressMiniValue, { color: COLORS.success }]}>
+            <Text style={[styles.progressMiniLabel, isRtl && styles.alignRight]}>{copy.daysCompleted}</Text>
+            <Text style={[styles.progressMiniValue, isRtl && styles.alignRight, { color: COLORS.success }]}>
               {formatDecimal(progress.completedDays)}
             </Text>
           </View>
           <View style={styles.progressMiniStat}>
-            <Text style={styles.progressMiniLabel}>{copy.daysLeft}</Text>
-            <Text style={[styles.progressMiniValue, { color: COLORS.lightGold }]}>
+            <Text style={[styles.progressMiniLabel, isRtl && styles.alignRight]}>{copy.daysLeft}</Text>
+            <Text style={[styles.progressMiniValue, isRtl && styles.alignRight, { color: COLORS.lightGold }]}>
               {formatDecimal(progress.remainingDays)}
             </Text>
           </View>
         </View>
-        <ProgressStat
-          label={copy.defaultAddIndicator}
-          value={
-            defaultDailyAddDays > 0
-              ? `${formatDecimal(defaultDailyAddDays)} ${copy.dayUnit}`
-              : copy.defaultAddOff
-          }
-        />
-        <ProgressStat
-          label={copy.finish}
-          value={formatFinishDate(progress.finishDate, defaultDailyAddDays > 0 ? copy.needHistory : copy.defaultAddOff)}
-        />
+        <View style={[styles.progressStatsRow, isRtl && styles.rowReverse]}>
+          <ProgressStat
+            label={copy.defaultAddIndicator}
+            value={
+              defaultDailyAddDays > 0
+                ? `${formatDecimal(defaultDailyAddDays)} ${copy.dayUnit}`
+                : copy.defaultAddOff
+            }
+            alignRight={isRtl}
+          />
+          <ProgressStat
+            label={copy.finish}
+            value={formatFinishDate(
+              progress.finishDate,
+              defaultDailyAddDays > 0 ? copy.needHistory : copy.defaultAddOff
+            )}
+            alignRight={isRtl}
+          />
+        </View>
         <Text style={[styles.progressFootnote, isArabic(language) && styles.alignRight]}>
           {copy.defaultAddMainNote}
         </Text>
@@ -3606,11 +3822,19 @@ function ProgressOverview({
   );
 }
 
-function ProgressStat({ label, value }: { label: string; value: string }) {
+function ProgressStat({
+  label,
+  value,
+  alignRight = false,
+}: {
+  label: string;
+  value: string;
+  alignRight?: boolean;
+}) {
   return (
     <View style={styles.progressStat}>
-      <Text style={styles.progressStatLabel}>{label}</Text>
-      <Text style={styles.progressStatValue}>{value}</Text>
+      <Text style={[styles.progressStatLabel, alignRight && styles.alignRight]}>{label}</Text>
+      <Text style={[styles.progressStatValue, alignRight && styles.alignRight]}>{value}</Text>
     </View>
   );
 }
@@ -3991,6 +4215,10 @@ const styles = StyleSheet.create({
   },
   alignRight: {
     textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  rowReverse: {
+    flexDirection: 'row-reverse',
   },
   languageToggle: {
     flexDirection: 'row',
@@ -4415,10 +4643,10 @@ const styles = StyleSheet.create({
   headerCard: {
     backgroundColor: 'rgba(13, 43, 32, 0.78)',
     borderRadius: 30,
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 22,
-    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 14,
+    gap: 6,
     borderWidth: 1,
     borderColor: COLORS.lightGold + '22',
     overflow: 'hidden',
@@ -4462,9 +4690,9 @@ const styles = StyleSheet.create({
   hadithCard: {
     backgroundColor: 'rgba(247, 243, 234, 0.07)',
     borderRadius: 22,
-    paddingHorizontal: 18,
-    paddingVertical: 20,
-    gap: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
     borderWidth: 1,
     borderColor: COLORS.lightGold + '1f',
   },
@@ -4485,11 +4713,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
+  hadithIntro: {
+    color: COLORS.mutedText,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   hadithText: {
     color: COLORS.cream,
-    fontSize: 21,
-    fontWeight: '700',
-    lineHeight: 32,
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 24,
     letterSpacing: 0.2,
     fontFamily: Platform.select({
       ios: 'Georgia',
@@ -4498,8 +4731,8 @@ const styles = StyleSheet.create({
     }),
   },
   hadithTextArabic: {
-    fontSize: 24,
-    lineHeight: 38,
+    fontSize: 18,
+    lineHeight: 30,
     letterSpacing: 0,
     fontFamily: Platform.select({
       ios: 'Geeza Pro',
@@ -4555,11 +4788,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  prayerRowsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  prayerRowsHeaderTitle: {
+    color: COLORS.lightGold,
+    fontSize: 14,
+    fontWeight: '800',
+  },
   progressCard: {
     backgroundColor: 'rgba(18, 59, 47, 0.92)',
     borderRadius: 22,
-    padding: 20,
-    gap: 16,
+    padding: 16,
+    gap: 12,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.lightGold + '22',
@@ -4578,23 +4822,23 @@ const styles = StyleSheet.create({
   },
   progressSplitText: {
     color: COLORS.mutedText,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 16,
   },
   progressTitle: {
     flex: 1,
     color: COLORS.cream,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
-    lineHeight: 24,
+    lineHeight: 22,
   },
   progressPercent: {
     color: COLORS.gold,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
   },
   progressTrack: {
-    height: 14,
+    height: 10,
     borderRadius: 999,
     backgroundColor: COLORS.progressTrack,
     overflow: 'hidden',
@@ -4607,52 +4851,53 @@ const styles = StyleSheet.create({
   },
   progressMiniStatsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   progressMiniStat: {
     flex: 1,
     backgroundColor: 'rgba(247, 243, 234, 0.06)',
-    borderRadius: 16,
-    padding: 14,
-    gap: 4,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 2,
     borderWidth: 1,
     borderColor: COLORS.lightGold + '14',
   },
   progressMiniLabel: {
     color: '#B7C9BE',
-    fontSize: 12,
+    fontSize: 11,
   },
   progressMiniValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '800',
   },
   progressStatsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   progressFootnote: {
     color: COLORS.mutedText,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
   },
   progressStat: {
     flex: 1,
     backgroundColor: 'rgba(247, 243, 234, 0.06)',
-    borderRadius: 16,
-    padding: 14,
-    gap: 6,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
     borderWidth: 1,
     borderColor: COLORS.lightGold + '12',
   },
   progressStatLabel: {
     color: '#B7C9BE',
-    fontSize: 12,
+    fontSize: 11,
     textTransform: 'uppercase',
   },
   progressStatValue: {
     color: COLORS.cream,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   dayActionCard: {
@@ -4676,6 +4921,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gold + '22',
     marginBottom: 2,
+  },
+  dayActionBadgeRtl: {
+    alignSelf: 'flex-end',
   },
   dayActionBadgeText: {
     color: COLORS.lightGold,
