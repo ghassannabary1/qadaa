@@ -185,6 +185,12 @@ type CopyBlock = {
   progressHint: string;
   quickAddTitle: string;
   prayerRowsTitle: string;
+  prayerRowsHint: string;
+  prayerRowsTotal: string;
+  prayerRowsTodayHint: string;
+  showPrayerRemaining: string;
+  hidePrayerRemaining: string;
+  todayDoneLabel: string;
   showPrayerRows: string;
   hidePrayerRows: string;
   fullDayTitle: string;
@@ -397,7 +403,13 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     progressTitle: 'Progress',
     progressHint: 'See what is left and when you finish based on your automatic daily counting setting.',
     quickAddTitle: 'Quick add',
-    prayerRowsTitle: 'Individual prayers',
+    prayerRowsTitle: 'Adjust individual prayers',
+    prayerRowsHint: 'Use these when you finish or correct one prayer for today.',
+    prayerRowsTotal: 'Total left',
+    prayerRowsTodayHint: 'Daily view',
+    showPrayerRemaining: 'Show remaining',
+    hidePrayerRemaining: 'Hide remaining',
+    todayDoneLabel: 'Today',
     showPrayerRows: 'Show individual prayers',
     hidePrayerRows: 'Hide individual prayers',
     fullDayTitle: 'Full qadaa day',
@@ -622,7 +634,13 @@ const COPY: Record<AppLanguage, CopyBlock> = {
     progressTitle: 'التقدّم',
     progressHint: 'شاهد المتبقي وتاريخ الانتهاء بحسب إعداد العدّ اليومي التلقائي.',
     quickAddTitle: 'إضافة سريعة',
-    prayerRowsTitle: 'الصلوات المفردة',
+    prayerRowsTitle: 'تعديل صلاة مفردة',
+    prayerRowsHint: 'استخدم هذه الأزرار عند إنجاز أو تصحيح صلاة واحدة لهذا اليوم.',
+    prayerRowsTotal: 'المجموع المتبقي',
+    prayerRowsTodayHint: 'عرض اليوم',
+    showPrayerRemaining: 'إظهار المتبقي',
+    hidePrayerRemaining: 'إخفاء المتبقي',
+    todayDoneLabel: 'اليوم',
     showPrayerRows: 'إظهار الصلوات المفردة',
     hidePrayerRows: 'إخفاء الصلوات المفردة',
     fullDayTitle: 'يوم قضاء كامل',
@@ -2285,6 +2303,7 @@ function MainApp({
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const mainScrollRef = useRef<ScrollView | null>(null);
   const [showPrayerRows, setShowPrayerRows] = useState(true);
+  const [showPrayerRemaining, setShowPrayerRemaining] = useState(false);
   const copy = COPY[state.language];
   const isRtl = isArabic(state.language);
   const hadithItems = DAILY_HADITH[state.language];
@@ -2465,13 +2484,18 @@ function MainApp({
                   </View>
                 </View>
 
-                <View style={[styles.prayerRowsHeader, isRtl && styles.rowReverse]}>
-                  <Text style={[styles.prayerRowsHeaderTitle, isRtl && styles.alignRight]}>
-                    {copy.prayerRowsTitle}
-                  </Text>
+                <View style={styles.prayerRowsHeader}>
+                  <View style={styles.prayerRowsHeaderCopy}>
+                    <Text style={[styles.prayerRowsHeaderTitle, isRtl && styles.alignRight]}>
+                      {copy.prayerRowsTitle}
+                    </Text>
+                    <Text style={[styles.prayerRowsHint, isRtl && styles.alignRight]}>
+                      {copy.prayerRowsHint}
+                    </Text>
+                  </View>
                   <Pressable
                     onPress={() => setShowPrayerRows((current) => !current)}
-                    style={styles.secondaryButton}
+                    style={[styles.secondaryButton, isRtl && styles.alignSelfEnd]}
                   >
                     <Text style={styles.secondaryButtonText}>
                       {showPrayerRows ? copy.hidePrayerRows : copy.showPrayerRows}
@@ -2480,18 +2504,38 @@ function MainApp({
                 </View>
 
                 {showPrayerRows
-                  ? PRAYER_KEYS.map((prayer) => {
+                  ? <>
+                    <View style={[styles.prayerRowsDetailBar, isRtl && styles.rowReverse]}>
+                      <Text style={[styles.prayerRowsTotal, isRtl && styles.alignRight]}>
+                        {showPrayerRemaining
+                          ? `${copy.prayerRowsTotal}: ${totals.remaining} ${copy.remaining}`
+                          : copy.prayerRowsTodayHint}
+                      </Text>
+                      <Pressable
+                        onPress={() => setShowPrayerRemaining((current) => !current)}
+                        style={styles.detailToggleButton}
+                      >
+                        <Text style={styles.detailToggleText}>
+                          {showPrayerRemaining ? copy.hidePrayerRemaining : copy.showPrayerRemaining}
+                        </Text>
+                      </Pressable>
+                    </View>
+                    {PRAYER_KEYS.map((prayer) => {
                       const prayerInfo = PRAYER_LABELS[prayer];
                       const remaining = Math.max(state.target[prayer] - state.completed[prayer], 0);
+                      const prayerName =
+                        state.language === 'ar' ? prayerInfo.arabic : prayerInfo.label;
                       return (
                         <View key={prayer} style={[styles.prayerCard, isRtl && styles.rowReverse]}>
                           <View style={styles.prayerInfo}>
                             <Text style={[styles.prayerLabel, isRtl && styles.alignRight]}>
-                              {state.language === 'ar' ? prayerInfo.arabic : prayerInfo.label}
+                              {prayerName}
                             </Text>
                             <Text style={[styles.prayerMeta, isRtl && styles.alignRight]}>
-                              {copy.doneLabel} {state.completed[prayer]} / {state.target[prayer]} ·{' '}
-                              {remaining} {copy.remainingLabel}
+                              {copy.todayDoneLabel}: {state.todayCompleted[prayer]}
+                              {showPrayerRemaining
+                                ? ` · ${remaining} ${prayerName} ${copy.remainingLabel}`
+                                : ''}
                             </Text>
                           </View>
 
@@ -2511,7 +2555,8 @@ function MainApp({
                           </View>
                         </View>
                       );
-                    })
+                    })}
+                  </>
                   : null}
               </View>
             </>
@@ -4217,6 +4262,9 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
   },
+  alignSelfEnd: {
+    alignSelf: 'flex-end',
+  },
   rowReverse: {
     flexDirection: 'row-reverse',
   },
@@ -4789,15 +4837,48 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   prayerRowsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
+  },
+  prayerRowsHeaderCopy: {
+    width: '100%',
+    gap: 4,
   },
   prayerRowsHeaderTitle: {
     color: COLORS.lightGold,
     fontSize: 14,
     fontWeight: '800',
+  },
+  prayerRowsHint: {
+    color: COLORS.mutedText,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  prayerRowsDetailBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  prayerRowsTotal: {
+    flex: 1,
+    color: COLORS.cream,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  detailToggleButton: {
+    backgroundColor: 'rgba(247, 243, 234, 0.06)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: COLORS.lightGold + '18',
+  },
+  detailToggleText: {
+    color: COLORS.cream,
+    fontSize: 12,
+    fontWeight: '700',
   },
   progressCard: {
     backgroundColor: 'rgba(18, 59, 47, 0.92)',
@@ -4973,35 +5054,38 @@ const styles = StyleSheet.create({
   },
   prayerCard: {
     backgroundColor: 'rgba(20, 67, 42, 0.92)',
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 14,
+    gap: 10,
   },
   prayerInfo: {
     flex: 1,
   },
   prayerLabel: {
     color: COLORS.cream,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '700',
   },
   prayerMeta: {
     color: COLORS.mutedText,
-    fontSize: 13,
-    marginTop: 6,
-    lineHeight: 18,
+    fontSize: 12,
+    marginTop: 3,
+    lineHeight: 16,
   },
   actionsColumn: {
-    alignItems: 'stretch',
-    gap: 8,
-    minWidth: 92,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   addButton: {
-    borderRadius: 12,
-    paddingVertical: 12,
+    borderRadius: 10,
+    minWidth: 50,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.lightGold + '20',
@@ -5013,9 +5097,9 @@ const styles = StyleSheet.create({
   },
   minusButton: {
     backgroundColor: COLORS.inputBg,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.gold + '22',
